@@ -1,0 +1,93 @@
+crds:
+     upgradeJob:
+          # the upgradeJob pod will be scheduled on desktop-agent
+          affinity:
+               nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                         nodeSelectorTerms:
+                              - matchExpressions:
+                                     - key: kubernetes.io/hostname
+                                       operator: In
+                                       values:
+                                            - desktop-agent
+alertmanager:
+     # close the alertmanager
+     enabled: false
+     alertmanagerSpec:
+          # the alertmanager pod will be scheduled on desktop-agent
+          affinity:
+               nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                         nodeSelectorTerms:
+                              - matchExpressions:
+                                     - key: kubernetes.io/hostname
+                                       operator: In
+                                       values:
+                                            - desktop-agent
+
+grafana:
+     # the grafana pod will be scheduled on desktop-agent
+     affinity:
+          nodeAffinity:
+               requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                         - matchExpressions:
+                                - key: kubernetes.io/hostname
+                                  operator: In
+                                  values:
+                                       - desktop-agent
+
+kube-state-metrics:
+     # the kube-state-metrics pod will be scheduled on desktop-agent
+     affinity:
+          nodeAffinity:
+               requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                         - matchExpressions:
+                                - key: kubernetes.io/hostname
+                                  operator: In
+                                  values:
+                                       - desktop-agent
+
+prometheus-node-exporter:
+     # to aviod node exporter mount the root directory on machines
+     hostRootFsMount:
+          enabled: false
+
+prometheusOperator:
+     # the prometheus pod will be scheduled on desktop-agent
+     affinity:
+          nodeAffinity:
+               requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                         - matchExpressions:
+                                - key: kubernetes.io/hostname
+                                  operator: In
+                                  values:
+                                       - desktop-agent`
+
+prometheus:
+     prometheusSpec:
+          # for graceful stop the prometheus pods on desktop-agent
+          enableAdminAPI: true
+          # the record be reserved in 7 days
+          retention: 7d
+          # the prometheus pod will be scheduled on desktop-agent
+          affinity:
+               nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                         nodeSelectorTerms:
+                              - matchExpressions:
+                                     - key: kubernetes.io/hostname
+                                       operator: In
+                                       values:
+                                            - desktop-agent
+          # presistence volume setting
+          storageSpec:
+               volumeClaimTemplate:
+                    spec:
+                         storageClassName: "manual"
+                         accessModes: ["ReadWriteOnce"]
+                         resources:
+                              requests:
+                                   storage: 30Gif

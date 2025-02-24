@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prometheus-pv
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes:
+    - ReadWriteOnce  # 只能被單一節點掛載
+  persistentVolumeReclaimPolicy: Retain  # PVC 刪除時，保留 PV（不刪數據）
+  storageClassName: manual  # 必須跟 PVC 一致
+  local:
+    path: /mnt/data/prometheus  # **這個目錄必須存在於 `desktop-agent`**
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - desktop-agent  # **這個 PV 只能在 `desktop-agent` 掛載**
