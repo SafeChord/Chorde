@@ -1,8 +1,6 @@
 global:
   affinity:
-    # -- Default pod anti-affinity rules. Either: `none`, `soft` or `hard`
-    podAntiAffinity: soft
-    # Node affinity rules
+    podAntiAffinity: none
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:

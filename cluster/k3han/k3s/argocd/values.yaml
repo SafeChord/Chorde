@@ -130,11 +130,11 @@ global:
     # -- Default pod anti-affinity rules. Either: `none`, `soft` or `hard`
     podAntiAffinity: soft
     # Node affinity rules
-    nodeAffinity:
+    nodeAffinity: {}
       # -- Default node affinity rules. Either: `none`, `soft` or `hard`
-      type: hard
+      # type: hard
       # -- Default match expressions for node affinity
-      matchExpressions: []
+      # matchExpressions: []
         # - key: topology.kubernetes.io/zone
         #   operator: In
         #   values:

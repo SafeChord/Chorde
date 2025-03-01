@@ -3,3 +3,4 @@
 *.env
 *.pem
 secrets/
+*values-secret.yaml
