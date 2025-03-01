@@ -4,6 +4,9 @@ kubectl apply -f pv.yaml
 # claim the persistent volume for prometheus
 kubectl apply -f pvc.yaml
 
+# deencrypt the secret file
+sops -d values-secret.enc.yaml > values-secret.yaml
+
 # install prometheus
 # helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 # vlaues.yaml for default configuration for k3han cluster
