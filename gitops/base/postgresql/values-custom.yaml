@@ -1,0 +1,24 @@
+primary:
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: "longhorn"
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "availability"
+                operator: In
+                values:
+                  - "high"
+  extraEnvVars:
+    - name: PGDATA
+      value: "/bitnami/postgresql/data"
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
