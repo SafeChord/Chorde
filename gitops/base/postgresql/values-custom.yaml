@@ -17,6 +17,9 @@ primary:
     - name: PGDATA
       value: "/bitnami/postgresql/data"
 
+auth:
+  existingSecret: postgredb-secret
+
 metrics:
   enabled: true
   serviceMonitor:

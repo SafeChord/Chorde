@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: postgredb
-  namespace: argocd
+  namespace: gitops
 spec:
   project: default
   source:
@@ -13,7 +13,6 @@ spec:
       valueFiles:
         - values.yaml
         - values-custom.yaml
-        - values-secret.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: database
