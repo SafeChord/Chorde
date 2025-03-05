@@ -1,29 +1,29 @@
-primary:
-  # persistence:
-  #   enabled: true
-  #   size: 10Gi
-  #   storageClass: local-path
-  #   nodeSelector:
-  #     availability: high 
+# primary:
+#   persistence:
+#     enabled: true
+#     size: 10Gi
+#     storageClass: local-path
+#     nodeSelector:
+#       availability: high 
 
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: "availability"
-                operator: In
-                values:
-                  - "high"
-  extraEnvVars:
-    - name: PGDATA
-      value: "/bitnami/postgresql/data"
+#   affinity:
+#     nodeAffinity:
+#       requiredDuringSchedulingIgnoredDuringExecution:
+#         nodeSelectorTerms:
+#           - matchExpressions:
+#               - key: "availability"
+#                 operator: In
+#                 values:
+#                   - "high"
+#   extraEnvVars:
+#     - name: PGDATA
+#       value: "/bitnami/postgresql/data"
 
-auth:
-  existingSecret: postgredb-secret
+# auth:
+#   existingSecret: postgredb-secret
 
-metrics:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-    namespace: monitoring
+# metrics:
+#   enabled: true
+#   serviceMonitor:
+#     enabled: true
+#     namespace: monitoring
