@@ -2,6 +2,7 @@ primary:
   persistence:
     enabled: true
     size: 10Gi
+    storageClass: local-path
     nodeSelector:
       availability: high 
 
