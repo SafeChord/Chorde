@@ -2,7 +2,6 @@ primary:
   persistence:
     enabled: true
     size: 10Gi
-    storageClass: "longhorn"
     nodeSelector:
       availability: high 
 
