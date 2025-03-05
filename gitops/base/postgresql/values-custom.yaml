@@ -6,21 +6,22 @@
 #     nodeSelector:
 #       availability: high 
 
-#   affinity:
-#     nodeAffinity:
-#       requiredDuringSchedulingIgnoredDuringExecution:
-#         nodeSelectorTerms:
-#           - matchExpressions:
-#               - key: "availability"
-#                 operator: In
-#                 values:
-#                   - "high"
+primary:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: "availability"
+                operator: In
+                values:
+                  - "high"
 #   extraEnvVars:
 #     - name: PGDATA
 #       value: "/bitnami/postgresql/data"
 
-# auth:
-#   existingSecret: postgredb-secret
+auth:
+  existingSecret: postgredb-secret
 
 # metrics:
 #   enabled: true
