@@ -3,6 +3,8 @@ primary:
     enabled: true
     size: 10Gi
     storageClass: "longhorn"
+    nodeSelector:
+      availability: high 
 
   affinity:
     nodeAffinity:
