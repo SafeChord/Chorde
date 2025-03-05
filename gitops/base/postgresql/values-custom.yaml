@@ -1,10 +1,10 @@
 primary:
-  persistence:
-    enabled: true
-    size: 10Gi
-    storageClass: local-path
-    nodeSelector:
-      availability: high 
+  # persistence:
+  #   enabled: true
+  #   size: 10Gi
+  #   storageClass: local-path
+  #   nodeSelector:
+  #     availability: high 
 
   affinity:
     nodeAffinity:
