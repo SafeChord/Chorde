@@ -1,6 +1,6 @@
 crds:
      upgradeJob:
-          # the upgradeJob pod will be scheduled on desktop-agent
+          # the upgradeJob pod will be scheduled on laptop-agent
           affinity:
                nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:
@@ -9,12 +9,12 @@ crds:
                                      - key: kubernetes.io/hostname
                                        operator: In
                                        values:
-                                            - desktop-agent
+                                            - laptop-agent
 alertmanager:
      # close the alertmanager
-     enabled: false
+     # enabled: false
      alertmanagerSpec:
-          # the alertmanager pod will be scheduled on desktop-agent
+          # the alertmanager pod will be scheduled on laptop-agent
           affinity:
                nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:
@@ -23,10 +23,10 @@ alertmanager:
                                      - key: kubernetes.io/hostname
                                        operator: In
                                        values:
-                                            - desktop-agent
+                                            - laptop-agent
 
 grafana:
-     # the grafana pod will be scheduled on desktop-agent
+     # the grafana pod will be scheduled on laptop-agent
      affinity:
           nodeAffinity:
                requiredDuringSchedulingIgnoredDuringExecution:
@@ -35,10 +35,10 @@ grafana:
                                 - key: kubernetes.io/hostname
                                   operator: In
                                   values:
-                                       - desktop-agent
+                                       - laptop-agent
 
 kube-state-metrics:
-     # the kube-state-metrics pod will be scheduled on desktop-agent
+     # the kube-state-metrics pod will be scheduled on laptop-agent
      affinity:
           nodeAffinity:
                requiredDuringSchedulingIgnoredDuringExecution:
@@ -47,7 +47,7 @@ kube-state-metrics:
                                 - key: kubernetes.io/hostname
                                   operator: In
                                   values:
-                                       - desktop-agent
+                                       - laptop-agent
 
 prometheus-node-exporter:
      # to aviod node exporter mount the root directory on machines
@@ -55,7 +55,7 @@ prometheus-node-exporter:
           enabled: false
 
 prometheusOperator:
-     # the prometheus pod will be scheduled on desktop-agent
+     # the prometheus pod will be scheduled on laptop-agent
      affinity:
           nodeAffinity:
                requiredDuringSchedulingIgnoredDuringExecution:
@@ -64,15 +64,15 @@ prometheusOperator:
                                 - key: kubernetes.io/hostname
                                   operator: In
                                   values:
-                                       - desktop-agent`
+                                       - laptop-agent
 
 prometheus:
      prometheusSpec:
-          # for graceful stop the prometheus pods on desktop-agent
+          # for graceful stop the prometheus pods on laptop-agent
           enableAdminAPI: true
           # the record be reserved in 7 days
           retention: 7d
-          # the prometheus pod will be scheduled on desktop-agent
+          # the prometheus pod will be scheduled on laptop-agent
           affinity:
                nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:
@@ -81,13 +81,13 @@ prometheus:
                                      - key: kubernetes.io/hostname
                                        operator: In
                                        values:
-                                            - desktop-agent
+                                            - laptop-agent
           # presistence volume setting
-          storageSpec:
-               volumeClaimTemplate:
-                    spec:
-                         storageClassName: "manual"
-                         accessModes: ["ReadWriteOnce"]
-                         resources:
-                              requests:
-                                   storage: 30Gif
+          # storageSpec:
+          #      volumeClaimTemplate:
+          #           spec:
+          #                storageClassName: "manual"
+          #                accessModes: ["ReadWriteOnce"]
+          #                resources:
+          #                     requests:
+          #                          storage: 30Gi

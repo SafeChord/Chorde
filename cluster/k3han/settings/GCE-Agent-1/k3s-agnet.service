@@ -11,7 +11,7 @@ WantedBy=multi-user.target
 Type=notify
 EnvironmentFile=-/etc/default/%N
 EnvironmentFile=-/etc/sysconfig/%N
-EnvironmentFile=-/etc/systemd/system/k3s.service.env
+EnvironmentFile=-/etc/systemd/system/k3s-agent.service.env
 KillMode=process
 Delegate=yes
 User=root
@@ -28,10 +28,6 @@ ExecStartPre=/bin/sh -xc '! /usr/bin/systemctl is-enabled --quiet nm-cloud-setup
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
 ExecStart=/usr/local/bin/k3s \
-    server \
-        '--node-name=hz-serv-sin' \
-        '--bind-address=0.0.0.0' \
-        '--flannel-external-ip' \
-        '--node-external-ip=100.64.0.1'
-        '--tls-san=0.0.0.0' \
-        '--tls-san=100.64.0.1' \
+    agent \
+        '--node-name=gce-agent-1' \
+        '--node-external-ip=100.64.0.3'

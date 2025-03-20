@@ -18,4 +18,4 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - desktop-agent  # **這個 PV 只能在 `desktop-agent` 掛載**
+                - laptop-agent  # **這個 PV 只能在 `desktop-agent` 掛載**
