@@ -1,11 +1,3 @@
-# primary:
-#   persistence:
-#     enabled: true
-#     size: 10Gi
-#     storageClass: local-path
-#     nodeSelector:
-#       availability: high 
-
 primary:
   affinity:
     nodeAffinity:
@@ -17,15 +9,18 @@ primary:
                 values:
                   - "true"
 
-#   extraEnvVars:
-#     - name: PGDATA
-#       value: "/bitnami/postgresql/data"
+readReplicas:
+  enabled: true
+  replicaCount: 1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/db-replica
+                operator: In
+                values:
+                  - "true"
 
 auth:
   existingSecret: postgredb-secret
-
-# metrics:
-#   enabled: true
-#   serviceMonitor:
-#     enabled: true
-#     namespace: monitoring
