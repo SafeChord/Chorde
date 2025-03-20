@@ -15,7 +15,7 @@ primary:
               - key: node-role.kubernetes.io/db-primary
                 operator: In
                 values:
-                  - true
+                  - "true"
 
 #   extraEnvVars:
 #     - name: PGDATA
