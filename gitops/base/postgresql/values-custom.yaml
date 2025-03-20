@@ -12,10 +12,11 @@ primary:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: "availability"
+              - key: node-role.kubernetes.io/db-primary
                 operator: In
                 values:
-                  - "high"
+                  - true
+
 #   extraEnvVars:
 #     - name: PGDATA
 #       value: "/bitnami/postgresql/data"
