@@ -3,6 +3,7 @@
 architecture: standalone
 
 auth:
+  sentinel: false
   existingSecret: redis-secret
 
 master:
