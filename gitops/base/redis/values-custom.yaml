@@ -2,9 +2,8 @@
 # standlone or replication
 architecture: standalone
 
-# auth:
-#   sentinel: false
-#   existingSecret: redis-secret
+auth:
+  existingSecret: redis-secret
 
 master:
   persistence:
