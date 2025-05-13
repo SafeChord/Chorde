@@ -13,6 +13,25 @@ grafana:
     userKey: admin-user
     passwordKey: admin-password
   
+  ingress:
+    enabled: true
+    ingressClassName: nginx-private
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/use-regex: "true"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    hosts:
+      - host: k3han.omh.idv.tw
+        paths:
+          - path: /grafana(/|$)(.*)
+            pathType: Prefix
+    path: /grafana
+    pathType: Prefix
+    
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana"
+  
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
