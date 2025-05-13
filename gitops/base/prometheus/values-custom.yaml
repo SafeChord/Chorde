@@ -18,8 +18,6 @@ grafana:
     annotations:
       nginx.ingress.kubernetes.io/rewrite-target: /
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
-      nginx.ingress.kubernetes.io/configuration-snippet: |
-        more_set_headers "X-Forwarded-Proto: https";
     ingressClassName: nginx-private
     hosts:
       - k3han.omh.idv.tw
