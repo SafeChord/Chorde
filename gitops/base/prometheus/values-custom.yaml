@@ -1,11 +1,12 @@
 alertmanager:
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: node-role.kubernetes.io/control-plane
-                operator: Exists
+  alertmanagerSpec:
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: Exists
 
 grafana:
   admin:
