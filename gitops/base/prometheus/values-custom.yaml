@@ -17,8 +17,9 @@ grafana:
     enabled: true
     annotations:
       nginx.ingress.kubernetes.io/rewrite-target: /
-      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      # nginx.ingress.kubernetes.io/configuration-snippet: |
+      #   more_set_headers "X-Forwarded-Proto: https";
     ingressClassName: nginx-private
     hosts:
       - k3han.omh.idv.tw
@@ -26,7 +27,7 @@ grafana:
 
   grafana.ini:
     server:
-      root_url: "%(protocol)s://%(domain)s/grafana/"
+      root_url: "%(protocol)://%(domain)s/grafana/"
       serve_from_sub_path: true
       
   affinity:
