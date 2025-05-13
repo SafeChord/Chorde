@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# the second time installation will conflict because the CRDs are already installed.
+# echo "[PHASE 0] INSTALLING PROMETHEUS-OPERATOR-CRD"
+# helm upgrade --install prometheus-crds prometheus-community/prometheus-operator-crds \
+#      --version 20.0.0
+
 echo "[PHASE 1] Sealing Secret..."
 kubeseal --controller-name=sealed-secrets \
          --controller-namespace=kube-system \
@@ -16,8 +21,5 @@ kubectl apply -f prometheus-pv.yaml
 
 echo "[PHASE 3] Deploy Prometheus via ArgoCD Application"
 kubectl apply -f application.yaml
-
-echo "[INFO] Waiting for Prometheus to sync in ArgoCD..."
-kubectl wait --for=condition=Synced application prometheus --timeout=60s -n gitops || true
 
 echo "[✅ DONE] Prometheus deployment triggered."

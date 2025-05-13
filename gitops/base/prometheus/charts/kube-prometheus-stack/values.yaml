@@ -31,7 +31,9 @@ commonLabels: {}
 ## Install Prometheus Operator CRDs
 ##
 crds:
-  enabled: true
+  # sould be set to false，if you want install the chart by argocd
+  # if true you will get an error like this:  is invalid: metadata.annotations: Too long: may not be more than xxxxx bytes
+  enabled: false
   ## The CRD upgrade job mitigates the limitation of helm not being able to upgrade CRDs.
   ## The job will apply the CRDs to the cluster before the operator is deployed, using helm hooks.
   ## It deploy a corresponding clusterrole, clusterrolebinding and serviceaccount to apply the CRDs.

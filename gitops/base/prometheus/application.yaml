@@ -4,18 +4,21 @@ metadata:
   name: kube-prometheus-stack
   namespace: gitops
 spec:
-  project: chorde
+  project: default
   source:
     repoURL: https://github.com/rebodutch/Chorde.git
     targetRevision: dev
     path: gitops/base/prometheus/charts/kube-prometheus-stack
     helm:
       valueFiles:
+        - values.yaml
         - ../../values-custom.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
   syncPolicy:
     automated:
-      prune: true
       selfHeal: true
+      prune: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
