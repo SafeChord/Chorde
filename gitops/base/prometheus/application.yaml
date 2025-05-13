@@ -8,12 +8,10 @@ spec:
   source:
     repoURL: https://github.com/rebodutch/Chorde.git
     targetRevision: dev
-    path: gitops/base/prometheus
-    chart: charts/kube-prometheus-stack
+    path: gitops/base/prometheus/charts/kube-prometheus-stack
     helm:
       valueFiles:
-        - values.yaml
-        - values-custom.yaml
+        - ../../values-custom.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

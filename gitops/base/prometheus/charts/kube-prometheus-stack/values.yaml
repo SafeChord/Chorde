@@ -1243,8 +1243,8 @@ grafana:
   ##
   defaultDashboardsInterval: 1m
 
-  adminUser: admin
-  adminPassword: prom-operator
+  # adminUser: admin
+  # adminPassword: prom-operator
 
   rbac:
     ## If true, Grafana PSPs will be created
