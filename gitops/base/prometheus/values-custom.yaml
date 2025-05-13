@@ -16,8 +16,6 @@ grafana:
   ingress:
     enabled: true
     ingressClassName: nginx-private
-    annotations:
-      nginx.ingress.kubernetes.io/rewrite-target: /
     hosts:
       - k3han.omh.idv.tw
     path: /grafana
