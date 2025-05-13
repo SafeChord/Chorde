@@ -27,10 +27,10 @@ grafana:
             pathType: Prefix
     path: /grafana
     pathType: Prefix
-    
-  grafana.ini:
-    server:
-      root_url: "%(protocol)s://%(domain)s/grafana"
+
+  grafana.ini: |
+    [server]
+    root_url = %(protocol)s://%(domain)s/grafana
   
   affinity:
     nodeAffinity:
