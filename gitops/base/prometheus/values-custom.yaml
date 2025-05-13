@@ -17,10 +17,11 @@ grafana:
     enabled: true
     annotations:
       nginx.ingress.kubernetes.io/rewrite-target: /
+      nginx.ingress.kubernetes.io/use-regex: "true"
     ingressClassName: nginx-private
     hosts:
       - k3han.omh.idv.tw
-    path: /grafana
+    path: grafana(/|$)(.*)
 
   grafana.ini:
     server:
