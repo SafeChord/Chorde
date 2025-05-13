@@ -17,17 +17,17 @@ grafana:
     enabled: true
     annotations:
       nginx.ingress.kubernetes.io/rewrite-target: /
-      nginx.ingress.kubernetes.io/use-regex: "true"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
     ingressClassName: nginx-private
     hosts:
       - k3han.omh.idv.tw
-    path: grafana(/|$)(.*)
+    path: /grafana
 
   grafana.ini:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
-
+      
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
