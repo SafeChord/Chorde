@@ -24,10 +24,11 @@ grafana:
       - k3han.omh.idv.tw
     path: /grafana
 
-  grafana.ini: |
-    [server]
-    root_url = %(protocol)s://%(domain)s/grafana
-  
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
+      
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
