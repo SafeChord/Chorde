@@ -1,0 +1,47 @@
+# nodeport
+# controller:
+#   ingressClass: nginx-private
+#   ingressClassResource:
+#     name: nginx-private
+#     enabled: true
+#     default: true
+#     controllerValue: "k8s.io/ingress-nginx"
+
+#   service:
+#     type: NodePort
+#     nodePorts:
+#       http: 30080
+#       https: 30443
+
+# hostport + bind-address
+controller:
+# We enable hostNetwork because our K3s cluster is built entirely on a Tailscale overlay network.
+# In this setup, hostNetwork causes the ingress controller to bind to the Tailscale interface (tailscale0),
+# which is only accessible from within the private overlay network—not the public internet.
+# This makes hostNetwork usage safe and even beneficial, as it simplifies internal service routing
+# without exposing any public-facing ports.
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+
+  ingressClass: nginx-private
+
+  ingressClassResource:
+    name: nginx-private
+    enabled: true
+    default: true
+    controllerValue: "k8s.io/ingress-nginx-private"
+ 
+  extraArgs:
+    controller-class: "k8s.io/ingress-nginx-private"
+
+  service:
+    enabled: false
+
+# only scheduled on control-plane nodes
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists

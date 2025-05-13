@@ -1,0 +1,20 @@
+installCRDs: true  # 安裝 cert-manager 所需的自定義資源（CRDs），初次安裝必需
+
+replicaCount: 1
+
+prometheus:
+  enabled: false  # 預設不開啟 metrics，如需監控可改為 true
+
+webhook:
+  timeoutSeconds: 10  # 用於 Kubernetes admission webhook 驗證資源時的逾時設定，預設值穩定即可
+
+cainjector:
+  enabled: true  # 啟用 CA 憑證注入器，讓 cert-manager 可將簽發的憑證自動掛進其他資源（如 Webhook、CRD）
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists

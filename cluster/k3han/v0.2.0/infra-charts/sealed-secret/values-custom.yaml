@@ -1,0 +1,19 @@
+commandArgs:
+  - "--key-renew-period=0"  # 停用金鑰自動更新，避免 re-seal 問題
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+
+# 可選：避免資源浪費
+# resources:
+#   requests:
+#     cpu: 50m
+#     memory: 64Mi
+#   limits:
+#     cpu: 100m
+#     memory: 128Mi

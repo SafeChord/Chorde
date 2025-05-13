@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-echo
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-echo
+  template:
+    metadata:
+      labels:
+        app: test-echo
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: acer-agent
+      containers:
+        - name: echo-server
+          image: ealen/echo-server
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-echo-svc
+  namespace: default
+spec:
+  selector:
+    app: test-echo
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+

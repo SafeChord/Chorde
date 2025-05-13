@@ -1,3 +1,5 @@
+# tou have to change architecture to replication if you want at least one replica
+# standlone or replication
 architecture: replication
 
 primary:
@@ -10,7 +12,7 @@ primary:
                 operator: In
                 values:
                   - "true"
-
+                  
 readReplicas:
   enabled: true
   replicaCount: 1
@@ -23,6 +25,6 @@ readReplicas:
                 operator: In
                 values:
                   - "true"
-
+# if no user be set, the default user (postgres) will be used
 auth:
   existingSecret: postgredb-secret

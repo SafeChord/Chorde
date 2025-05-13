@@ -1,0 +1,84 @@
+---
+- name: Provision Generic Agent into K3han Cluster (Generic Playbook)
+  hosts: all_nodes
+  become: yes
+
+  vars:
+    tailscale_authkey: "<YOUR_TAILSCALE_AUTHKEY>"   # Optional: Tailscale authkey if needed
+    k3s_server_ip: "<HZ-SERV-SIN_VPN_IP>"            # Example: 100.100.x.x
+    k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
+
+  tasks:
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: latest
+      tags: tailscale
+
+    - name: Start and authenticate Tailscale VPN
+      shell: |
+        tailscale up --authkey {{ tailscale_authkey }} --advertise-tags=tag:edge-node
+      args:
+        creates: /var/lib/tailscale/tailscaled.state
+      tags: tailscale
+
+    - name: Install K3s agent with specified node name
+      shell: |
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -s - agent --node-name {{ inventory_hostname }}
+      tags: k3s
+
+    - name: Get pod CIDR for node
+      shell: |
+        kubectl get pod -n kube-system -o wide \
+          | grep svclb-traefik- \
+          | grep {{ inventory_hostname }} \
+          | awk '{split($(NF-3),a,"."); print a[1]"."a[2]"."a[3]".0/24"}'
+      register: node_pod_cidr
+      changed_when: false
+      failed_when: node_pod_cidr.rc != 0
+
+    - name: Advertise pod CIDR route via Tailscale
+      shell: |
+        tailscale up --accept-routes=true --advertise-routes={{ node_pod_cidr.stdout }}
+      when: node_pod_cidr.stdout != ""
+      ignore_errors: true
+      tags: tailscale
+
+    - name: Get Tailscale IP for external access
+      shell: |
+        tailscale ip | grep -m 1 '^[0-9]'
+      register: tailscale_ip
+      changed_when: false
+      failed_when: tailscale_ip.rc != 0
+
+    - name: Add external IP to k3s-agent.service
+      shell: |
+        echo -e "\t\t--node-external-ip={{ tailscale_ip.stdout }}" | tee -a /etc/systemd/system/k3s-agent.service
+      tags: external-ip
+
+    - name: Reload and restart k3s-agent service
+      systemd:
+        daemon_reload: yes
+        name: k3s-agent
+        state: restarted
+
+    - name: Patch node labels dynamically from inventory
+      shell: |
+        kubectl label node {{ inventory_hostname }} \
+          region={{ node_region }} tier={{ node_tier }} ha-level={{ node_ha_level }} provider={{ node_provider }} --overwrite
+      ignore_errors: true
+      tags: label
+
+  # Reminder: This playbook is a formal documentation artifact.
+  # It is designed to be scalable for multiple agents.
+
+# Required per-host variables in inventory:
+# node_region=tw
+# node_tier=medium
+# node_ha_level=local-24h
+# node_provider=local
+
+# Author: bradyhau
+# Project: SafeChord / Chorde / K3han
+# Date: 2025-04
+# Status: Documentation Only (Not Executed)

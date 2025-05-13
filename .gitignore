@@ -4,3 +4,5 @@
 *.pem
 secrets/
 *values-secret.yaml
+*unsealed-secret.yaml
+*-dry*

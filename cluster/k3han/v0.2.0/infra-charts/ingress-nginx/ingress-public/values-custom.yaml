@@ -1,0 +1,43 @@
+controller:
+  kind: Deployment
+
+  ingressClass: nginx-public
+
+  ingressClassResource:
+    name: nginx-public
+    enabled: true
+    default: false
+    controllerValue: "k8s.io/ingress-nginx-public"
+ 
+  extraArgs:
+    controller-class: "k8s.io/ingress-nginx-public"
+
+  hostPort:
+    enabled: true
+
+  nodeSelector:
+    kubernetes.io/hostname: gce-agent-tw
+
+  service:
+    enabled: false
+
+# security settings
+  config:
+    enable-real-ip: "true"
+    real-ip-header: "X-Forwarded-For"
+    set-real-ip-from: "0.0.0.0/0"
+
+    limit-connections: "20"
+    limit-rps: "5"
+    limit-rpm: "60"
+
+    server-tokens: "false"
+    proxy-hide-header: "X-Powered-By"
+    hide-headers: "X-Powered-By"
+
+  #   # 全域強制 https 重導向，未來 https 再用
+  #   ssl-redirect: "true"
+  #   force-ssl-redirect: "true"
+
+defaultBackend:
+  enabled: false

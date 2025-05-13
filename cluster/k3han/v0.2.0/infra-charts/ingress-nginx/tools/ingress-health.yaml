@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-health
+  namespace: infra-tools
+  labels:
+    app: ingress-health
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingress-health
+  template:
+    metadata:
+      labels:
+        app: ingress-health
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: acer-agent
+      containers:
+        - name: nginx
+          image: nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              memory: "32Mi"
+              cpu: "10m"
