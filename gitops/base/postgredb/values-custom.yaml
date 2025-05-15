@@ -8,14 +8,19 @@ primary:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: tier
+              - key: chorde.io/tier
                 operator: In
                 values:
                   - medium
-              - key: provider
+              - key: chorde.io/provider
                 operator: NotIn
                 values:
                   - local
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
   persistence:
     enabled: true
     storageClass: local-path
@@ -31,14 +36,20 @@ readReplicas:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: tier
+              - key: chorde.io/tier
                 operator: In
                 values:
                   - medium
-              - key: region
+              - key: chorde.io/region
                 operator: In
                 values:
                   - tw
+  tolerations:
+    - key: chorde.io/provider
+      operator: Equal
+      value: local            
+      effect: PreferNoSchedule 
+
   persistence:
     enabled: true
     storageClass: local-nfs

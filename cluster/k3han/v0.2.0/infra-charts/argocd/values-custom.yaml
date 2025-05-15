@@ -22,6 +22,10 @@ controller:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 dex:
   affinity:
@@ -31,6 +35,10 @@ dex:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 notifications:
   affinity:
@@ -40,6 +48,10 @@ notifications:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 redis:
   affinity:
@@ -49,6 +61,10 @@ redis:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 repoServer:
   affinity:
@@ -58,6 +74,10 @@ repoServer:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 server:
   affinity:
@@ -67,6 +87,11 @@ server:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+      
   ingress:
     enabled: true
     annotations:

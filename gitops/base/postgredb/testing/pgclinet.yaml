@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pg-client-test
+spec:
+  containers:
+  - name: pgsql-client
+    image: bitnami/postgresql:latest 
+    command: ["sleep", "infinity"] 
+  restartPolicy: Never

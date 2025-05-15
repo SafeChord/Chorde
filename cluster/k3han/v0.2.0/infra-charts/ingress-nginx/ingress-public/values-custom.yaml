@@ -15,8 +15,20 @@ controller:
   hostPort:
     enabled: true
 
-  nodeSelector:
-    kubernetes.io/hostname: gce-agent-tw
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/purpose
+                operator: In
+                values:
+                  - proxy-only
+  tolerations:
+    - key: chorde.io/purpose
+      operator: Equal
+      value: proxy-only            
+      effect: NoSchedule 
 
   service:
     enabled: false

@@ -7,19 +7,23 @@ alertmanager:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: Exists
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
 
 grafana:
   admin:
     existingSecret: grafana-admin-secret
     userKey: admin-user
     passwordKey: admin-password
-  
+
   ingress:
     enabled: true
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false" 
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     ingressClassName: nginx-private
     hosts:
       - k3han.omh.idv.tw
@@ -29,7 +33,7 @@ grafana:
     server:
       root_url: "http://k3han.omh.idv.tw/grafana/"
       serve_from_sub_path: true
-      
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -37,6 +41,10 @@ grafana:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 kube-state-metrics:
   affinity:
@@ -46,6 +54,10 @@ kube-state-metrics:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 prometheus-node-exporter:
   # to aviod node exporter mount the root directory on machines
@@ -60,6 +72,10 @@ prometheusOperator:
           - matchExpressions:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
 
 prometheus:
   prometheusSpec:
@@ -72,6 +88,11 @@ prometheus:
             - matchExpressions:
                 - key: node-role.kubernetes.io/control-plane
                   operator: Exists
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
     storageSpec:
       volumeClaimTemplate:
         spec:
