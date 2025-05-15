@@ -14,6 +14,7 @@ kubectl apply -f postgredb-sealed-secrets.yaml
 
 echo "[PHASE 2] Preclaim PersistentVolume..."
 kubectl apply -f postgredb-pv.yaml
+kubectl apply -f postgredb-replica-pv.yaml
 
 echo "[PHASE 3] Deploy postgredb via ArgoCD Application"
 kubectl apply -f application.yaml

@@ -39,6 +39,12 @@ readReplicas:
                 operator: In
                 values:
                   - tw
-# if no user be set, the default user (postgres) will be used
+  persistence:
+    enabled: true
+    storageClass: local-nfs
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+
 auth:
   existingSecret: postgredb-secret

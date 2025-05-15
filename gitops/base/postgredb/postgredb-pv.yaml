@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: postgredb-pv
+  name: contabo-local-10g-postgredb
 spec:
   capacity:
     storage: 10Gi
