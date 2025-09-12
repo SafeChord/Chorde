@@ -1,6 +1,9 @@
 volumePermissions:
   enabled: true
-  
+
+kraft:
+  clusterId: "mz12ORtFQnCth0vuyApZBw"
+
 controller:
   replicaCount: 1
   affinity:
