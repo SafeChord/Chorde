@@ -1,3 +1,6 @@
+volumePermissions:
+  enabled: true
+  
 controller:
   replicaCount: 1
   affinity:
