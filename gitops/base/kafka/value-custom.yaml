@@ -1,0 +1,43 @@
+controller:
+  replicaCount: 1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/tier
+                operator: In
+                values:
+                  - medium
+              - key: chorde.io/region
+                operator: In
+                values:
+                  - tw
+  persistence:
+    enabled: true
+    storageClass: local-nfs
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+
+broker:
+  replicaCount: 1
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/tier
+                operator: In
+                values:
+                  - medium
+              - key: chorde.io/region
+                operator: In
+                values:
+                  - tw
+  persistence:
+    enabled: true
+    storageClass: local-nfs
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
