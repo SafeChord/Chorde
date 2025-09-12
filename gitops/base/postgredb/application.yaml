@@ -1,13 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: bitnami-postgresql
+  name: bitnami-kafka
   namespace: gitops
 spec:
   project: default
   source:
     repoURL: https://github.com/rebodutch/Chorde.git
-    targetRevision: dev
+    targetRevision: main
     path: gitops/base/postgredb/charts/postgresql
     helm:
       valueFiles:

@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/rebodutch/Chorde.git
-    targetRevision: dev
+    targetRevision: main
     path: gitops/base/prometheus/charts/kube-prometheus-stack
     helm:
       valueFiles:
