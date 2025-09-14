@@ -1,0 +1,29 @@
+## @param architecture Redis&reg; architecture. Allowed values: `standalone` or `replication`
+##
+architecture: standalone
+
+auth:
+  existingSecret: redis-secret
+  ## @param auth.existingSecretPasswordKey Password key to be retrieved from existing secret
+  ## NOTE: ignored unless `auth.existingSecret` parameter is set
+
+master:
+  persistence:
+    enabled: true
+    storageClass: local-nfs
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/tier
+                operator: In
+                values:
+                  - medium
+              - key: chorde.io/region
+                operator: In
+                values:
+                  - tw
