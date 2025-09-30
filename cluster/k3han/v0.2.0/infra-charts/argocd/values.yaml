@@ -35,14 +35,14 @@ crds:
   keep: true
   # -- Annotations to be added to all CRDs
   annotations: {}
-  # -- Addtional labels to be added to all CRDs
+  # -- Additional labels to be added to all CRDs
   additionalLabels: {}
 
 ## Globally shared configuration
 global:
   # -- Default domain used by all components
   ## Used for ingresses, certificates, SSO, notifications, etc.
-  domain: k3han.omh.idv.tw
+  domain: argocd.example.com
 
   # -- Runtime class name for all components
   runtimeClassName: ""
@@ -78,6 +78,9 @@ global:
 
   # -- Annotations for the all deployed Deployments
   deploymentAnnotations: {}
+
+  # -- Labels for the all deployed Deployments
+  deploymentLabels: {}
 
   # -- Annotations for the all deployed pods
   podAnnotations: {}
@@ -130,11 +133,11 @@ global:
     # -- Default pod anti-affinity rules. Either: `none`, `soft` or `hard`
     podAntiAffinity: soft
     # Node affinity rules
-    nodeAffinity: {}
+    nodeAffinity:
       # -- Default node affinity rules. Either: `none`, `soft` or `hard`
-      # type: hard
+      type: hard
       # -- Default match expressions for node affinity
-      # matchExpressions: []
+      matchExpressions: []
         # - key: topology.kubernetes.io/zone
         #   operator: In
         #   values:
@@ -252,6 +255,131 @@ configs:
     #           name: some-cluster
     #           server: https://some-cluster
 
+    ## Default configuration for ignoreResourceUpdates.
+    ## The ignoreResourceUpdates list contains K8s resource's properties that are known to be frequently updated
+    ## by controllers and operators. These resources, when watched by argo, will cause many unnecessary updates.
+
+    # -- Ignoring status for all resources. An update will still be sent if the status update causes the health to change.
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.all: |
+      jsonPointers:
+        - /status
+    # -- Some Application fields are generated and not related to the application updates itself
+    ## The Application itself is already watched by the controller lister, but this configuration is applied for apps of apps
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.argoproj.io_Application: |
+      jqPathExpressions:
+        - '.metadata.annotations."notified.notifications.argoproj.io"'
+        - '.metadata.annotations."argocd.argoproj.io/refresh"'
+        - '.metadata.annotations."argocd.argoproj.io/hydrate"'
+        - '.operation'
+    # -- Ignore Argo Rollouts generated fields
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.argoproj.io_Rollout: |
+      jqPathExpressions:
+        - '.metadata.annotations."notified.notifications.argoproj.io"'
+    # -- Legacy annotations used on HPA autoscaling/v1
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.autoscaling_HorizontalPodAutoscaler: |
+      jqPathExpressions:
+        - '.metadata.annotations."autoscaling.alpha.kubernetes.io/behavior"'
+        - '.metadata.annotations."autoscaling.alpha.kubernetes.io/conditions"'
+        - '.metadata.annotations."autoscaling.alpha.kubernetes.io/metrics"'
+        - '.metadata.annotations."autoscaling.alpha.kubernetes.io/current-metrics"'
+    # -- Ignore the cluster-autoscaler status
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.ConfigMap: |
+      jqPathExpressions:
+        # Ignore the cluster-autoscaler status
+        - '.metadata.annotations."cluster-autoscaler.kubernetes.io/last-updated"'
+        # Ignore the annotation of the legacy Leases election
+        - '.metadata.annotations."control-plane.alpha.kubernetes.io/leader"'
+    # -- Ignore the common scaling annotations
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.apps_ReplicaSet: |
+      jqPathExpressions:
+        - '.metadata.annotations."deployment.kubernetes.io/desired-replicas"'
+        - '.metadata.annotations."deployment.kubernetes.io/max-replicas"'
+        - '.metadata.annotations."rollout.argoproj.io/desired-replicas"'
+    # -- Ignores update if EndpointSlice is not excluded globally
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.discovery.k8s.io_EndpointSlice: |
+      jsonPointers:
+        - /metadata
+        - /endpoints
+        - /ports
+    # -- Ignores update if Endpoints is not excluded globally
+    # @default -- See [values.yaml]
+    resource.customizations.ignoreResourceUpdates.Endpoints: |
+      jsonPointers:
+        - /metadata
+        - /subsets
+
+    ## Default configuration for exclusions.
+    ## The exclusion list are K8s resources that we assume will never be declared in Git,
+    ## and are never child objects of managed resources that need to be presented in the resource tree.
+    ## This list contains high volume and  high churn metadata objects which we exclude for performance
+    ## reasons, reducing connections and load to the K8s API servers of managed clusters.
+
+    # -- Resource Exclusion/Inclusion
+    # @default -- See [values.yaml]
+    resource.exclusions: |
+      ### Network resources created by the Kubernetes control plane and excluded to reduce the number of watched events and UI clutter
+      - apiGroups:
+        - ''
+        - discovery.k8s.io
+        kinds:
+        - Endpoints
+        - EndpointSlice
+      ### Internal Kubernetes resources excluded reduce the number of watched events
+      - apiGroups:
+        - coordination.k8s.io
+        kinds:
+        - Lease
+      ### Internal Kubernetes Authz/Authn resources excluded reduce the number of watched events
+      - apiGroups:
+        - authentication.k8s.io
+        - authorization.k8s.io
+        kinds:
+        - SelfSubjectReview
+        - TokenReview
+        - LocalSubjectAccessReview
+        - SelfSubjectAccessReview
+        - SelfSubjectRulesReview
+        - SubjectAccessReview
+      ### Intermediate Certificate Request excluded reduce the number of watched events
+      - apiGroups:
+        - certificates.k8s.io
+        kinds:
+        - CertificateSigningRequest
+      - apiGroups:
+        - cert-manager.io
+        kinds:
+        - CertificateRequest
+      ### Cilium internal resources excluded reduce the number of watched events and UI Clutter
+      - apiGroups:
+        - cilium.io
+        kinds:
+        - CiliumIdentity
+        - CiliumEndpoint
+        - CiliumEndpointSlice
+      ### Kyverno intermediate and reporting resources excluded reduce the number of watched events and improve performance
+      - apiGroups:
+        - kyverno.io
+        - reports.kyverno.io
+        - wgpolicyk8s.io
+        kinds:
+        - PolicyReport
+        - ClusterPolicyReport
+        - EphemeralReport
+        - ClusterEphemeralReport
+        - AdmissionReport
+        - ClusterAdmissionReport
+        - BackgroundScanReport
+        - ClusterBackgroundScanReport
+        - UpdateRequest
+
+
   # Argo CD configuration parameters
   ## Ref: https://github.com/argoproj/argo-cd/blob/master/docs/operator-manual/argocd-cmd-params-cm.yaml
   params:
@@ -294,6 +422,8 @@ configs:
     server.enable.gzip: true
     # -- Enable proxy extension feature. (proxy extension is in Alpha phase)
     server.enable.proxy.extension: false
+    # -- Enable the hydrator feature (hydrator is in Alpha phase)
+    hydrator.enabled: false
     # -- Set X-Frame-Options header in HTTP responses to value. To disable, set to "".
     server.x.frame.options: sameorigin
 
@@ -731,8 +861,9 @@ controller:
   #    image: alpine:3
   #    command: [sh, -c]
   #    args:
-  #      - wget -qO kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.0.25/kubelogin-linux-amd64.zip &&
-  #        unzip kubelogin.zip && mv bin/linux_amd64/kubelogin /custom-tools/
+  #      - wget -qO /custom-tools/kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.2.7/kubelogin-linux-amd64.zip &&
+  #        mkdir /custom-tools/tmp && unzip -d /custom-tools/tmp /custom-tools/kubelogin.zip  &&
+  #        mv /custom-tools/tmp/bin/linux_amd64/kubelogin /custom-tools/ && rm -rf custom-tools/tmp && rm /custom-tools/kubelogin.zip
   #    volumeMounts:
   #      - mountPath: /custom-tools
   #        name: custom-tools
@@ -760,6 +891,9 @@ controller:
 
   # -- Annotations for the application controller Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the application controller Deployment
+  deploymentLabels: {}
 
   # -- Annotations to be added to application controller pods
   podAnnotations: {}
@@ -956,6 +1090,12 @@ controller:
     # -- List of custom rules for the application controller's ClusterRole resource
     rules: []
 
+  # Default application controller's network policy
+  networkPolicy:
+    # -- Default network policy rules used by application controller
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
 ## Dex
 dex:
   # -- Enable dex
@@ -1027,7 +1167,7 @@ dex:
     # -- Dex image repository
     repository: ghcr.io/dexidp/dex
     # -- Dex image tag
-    tag: v2.42.0
+    tag: v2.43.1
     # -- Dex imagePullPolicy
     # @default -- `""` (defaults to global.image.imagePullPolicy)
     imagePullPolicy: ""
@@ -1108,6 +1248,9 @@ dex:
 
   # -- Annotations to be added to the Dex server Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the Dex server Deployment
+  deploymentLabels: {}
 
   # -- Annotations to be added to the Dex server pods
   podAnnotations: {}
@@ -1252,12 +1395,19 @@ dex:
     #   maxSurge: 25%
     #   maxUnavailable: 25%
 
+  # Default Dex server's network policy
+  networkPolicy:
+    # -- Default network policy rules used by Dex server
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
+  # DEPRECATED - Use configs.params to override
   # -- Dex log format. Either `text` or `json`
   # @default -- `""` (defaults to global.logging.format)
-  logFormat: ""
+  # logFormat: ""
   # -- Dex log level. One of: `debug`, `info`, `warn`, `error`
   # @default -- `""` (defaults to global.logging.level)
-  logLevel: ""
+  # logLevel: ""
 
 ## Redis
 redis:
@@ -1289,9 +1439,10 @@ redis:
   ## Redis image
   image:
     # -- Redis repository
-    repository: public.ecr.aws/docker/library/redis
+    repository: ecr-public.aws.com/docker/library/redis
     # -- Redis tag
-    tag: 7.4.2-alpine
+    ## Do not upgrade to >= 7.4.0, otherwise you are no longer using an open source version of Redis
+    tag: 7.2.8-alpine
     # -- Redis image pull policy
     # @default -- `""` (defaults to global.image.imagePullPolicy)
     imagePullPolicy: ""
@@ -1305,9 +1456,9 @@ redis:
     ## Prometheus redis-exporter image
     image:
       # -- Repository to use for the redis-exporter
-      repository: public.ecr.aws/bitnami/redis-exporter
+      repository: ghcr.io/oliver006/redis_exporter
       # -- Tag to use for the redis-exporter
-      tag: 1.67.0
+      tag: v1.75.0
       # -- Image pull policy for the redis-exporter
       # @default -- `""` (defaults to global.image.imagePullPolicy)
       imagePullPolicy: ""
@@ -1427,6 +1578,9 @@ redis:
 
   # -- Annotations to be added to the Redis server Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the Redis server Deployment
+  deploymentLabels: {}
 
   # -- Annotations to be added to the Redis server pods
   podAnnotations: {}
@@ -1567,6 +1721,12 @@ redis:
       # -- Prometheus ServiceMonitor annotations
       annotations: {}
 
+  # Default redis's network policy
+  networkPolicy:
+    # -- Default network policy rules used by redis
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
 ## Redis-HA subchart replaces custom redis deployment when `redis-ha.enabled=true`
 # Ref: https://github.com/DandyDeveloper/charts/blob/master/charts/redis-ha/values.yaml
 redis-ha:
@@ -1575,17 +1735,18 @@ redis-ha:
   ## Redis image
   image:
     # -- Redis repository
-    repository: public.ecr.aws/docker/library/redis
+    repository: ecr-public.aws.com/docker/library/redis
     # -- Redis tag
-    tag: 7.4.2-alpine
+    ## Do not upgrade to >= 7.4.0, otherwise you are no longer using an open source version of Redis
+    tag: 7.2.8-alpine
   ## Prometheus redis-exporter sidecar
   exporter:
     # -- Enable Prometheus redis-exporter sidecar
     enabled: false
     # -- Repository to use for the redis-exporter
-    image: public.ecr.aws/bitnami/redis-exporter
+    image: ghcr.io/oliver006/redis_exporter
     # -- Tag to use for the redis-exporter
-    tag: 1.58.0
+    tag: v1.75.0
   persistentVolume:
     # -- Configures persistence on Redis nodes
     enabled: false
@@ -1606,6 +1767,9 @@ redis-ha:
     # --  Custom labels for the haproxy pod. This is relevant for Argo CD CLI.
     labels:
       app.kubernetes.io/name: argocd-redis-ha-haproxy
+    image:
+      # -- HAProxy Image Repository
+      repository: ecr-public.aws.com/docker/library/haproxy
     metrics:
       # -- HAProxy enable prometheus metric scraping
       enabled: true
@@ -1670,8 +1834,8 @@ externalRedis:
   password: ""
   # -- External Redis server port
   port: 6379
-  # -- The name of an existing secret with Redis (must contain key `redis-password`) and Sentinel credentials.
-  # When it's set, the `externalRedis.password` parameter is ignored
+  # -- The name of an existing secret with Redis (must contain key `redis-password`. And should contain `redis-username` if username is not `default`) and Sentinel credentials.
+  # When it's set, the `externalRedis.username` and `externalRedis.password` parameters are ignored
   existingSecret: ""
   # -- External Redis Secret annotations
   secretAnnotations: {}
@@ -1931,8 +2095,9 @@ server:
   #    image: alpine:3
   #    command: [sh, -c]
   #    args:
-  #      - wget -qO kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.0.25/kubelogin-linux-amd64.zip &&
-  #        unzip kubelogin.zip && mv bin/linux_amd64/kubelogin /custom-tools/
+  #      - wget -qO /custom-tools/kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.2.7/kubelogin-linux-amd64.zip &&
+  #        mkdir /custom-tools/tmp && unzip -d /custom-tools/tmp /custom-tools/kubelogin.zip  &&
+  #        mv /custom-tools/tmp/bin/linux_amd64/kubelogin /custom-tools/ && rm -rf custom-tools/tmp && rm /custom-tools/kubelogin.zip
   #    volumeMounts:
   #      - mountPath: /custom-tools
   #        name: custom-tools
@@ -1957,6 +2122,9 @@ server:
 
   # -- Annotations to be added to server Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the server Deployment
+  deploymentLabels: {}
 
   # -- Annotations to be added to server pods
   podAnnotations: {}
@@ -2425,6 +2593,12 @@ server:
     # -- List of custom rules for the server's ClusterRole resource
     rules: []
 
+  # Default ArgoCD Server's network policy
+  networkPolicy:
+    # -- Default network policy rules used by ArgoCD Server
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
 ## Repo Server
 repoServer:
   # -- Repo server name
@@ -2606,6 +2780,9 @@ repoServer:
   # -- Annotations to be added to repo server Deployment
   deploymentAnnotations: {}
 
+  # -- Labels for the repo server Deployment
+  deploymentLabels: {}
+
   # -- Annotations to be added to repo server pods
   podAnnotations: {}
 
@@ -2736,6 +2913,8 @@ repoServer:
     port: 8081
     # -- Repo server service port name
     portName: tcp-repo-server
+    # -- Traffic distribution preference for the repo server service. If the field is not set, the implementation will apply its default routing strategy.
+    trafficDistribution: ""
 
   ## Repo server metrics service configuration
   metrics:
@@ -2818,6 +2997,12 @@ repoServer:
   #     - get
   #     - list
   #     - watch
+
+  # Default repo server's network policy
+  networkPolicy:
+    # -- Default network policy rules used by repo server
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
 
 ## ApplicationSet controller
 applicationSet:
@@ -2975,6 +3160,9 @@ applicationSet:
 
   # -- Annotations to be added to ApplicationSet controller Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the ApplicationSet controller Deployment
+  deploymentLabels: {}
 
   # -- Annotations for the ApplicationSet controller pods
   podAnnotations: {}
@@ -3188,6 +3376,13 @@ applicationSet:
       #     - argocd-applicationset.example.com
   # -- Enable ApplicationSet in any namespace feature
   allowAnyNamespace: false
+
+  # Default ApplicationSet controller's network policy
+  networkPolicy:
+    # -- Default network policy rules used by ApplicationSet controller
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
 ## Notifications controller
 notifications:
   # -- Enable notifications controller
@@ -3236,12 +3431,13 @@ notifications:
   # @default -- `[]` (defaults to global.imagePullSecrets)
   imagePullSecrets: []
 
+  # DEPRECATED - Use configs.params to override
   # -- Notifications controller log format. Either `text` or `json`
   # @default -- `""` (defaults to global.logging.format)
-  logFormat: ""
+  # logFormat: ""
   # -- Notifications controller log level. One of: `debug`, `info`, `warn`, `error`
   # @default -- `""` (defaults to global.logging.level)
-  logLevel: ""
+  # logLevel: ""
 
   # -- Extra arguments to provide to the notifications controller
   extraArgs: []
@@ -3356,6 +3552,9 @@ notifications:
 
   # -- Annotations to be applied to the notifications controller Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the notifications controller Deployment
+  deploymentLabels: {}
 
   # -- Annotations to be applied to the notifications controller Pods
   podAnnotations: {}
@@ -3753,6 +3952,12 @@ notifications:
     # defaultTriggers: |
     #   - on-sync-status-unknown
 
+  # Default notifications controller's network policy
+  networkPolicy:
+    # -- Default network policy rules used by notifications controller
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
+
 commitServer:
   # -- Enable commit server
   enabled: false
@@ -3821,6 +4026,10 @@ commitServer:
     annotations: {}
     # -- commit server service labels
     labels: {}
+    # -- commit server service port
+    port: 8086
+    # -- commit server service port name
+    portName: server
 
   # -- Automount API credentials for the Service Account into the pod.
   automountServiceAccountToken: false
@@ -3839,6 +4048,9 @@ commitServer:
 
   # -- Annotations to be added to commit server Deployment
   deploymentAnnotations: {}
+
+  # -- Labels for the commit server Deployment
+  deploymentLabels: {}
 
   # -- Annotations for the commit server pods
   podAnnotations: {}
@@ -3932,4 +4144,10 @@ commitServer:
   # -- Priority class for the commit server pods
   # @default -- `""` (defaults to global.priorityClassName)
   priorityClassName: ""
+
+  # Default commit server's network policy
+  networkPolicy:
+    # -- Default network policy rules used by commit server
+    # @default -- `false` (defaults to global.networkPolicy.create)
+    create: false
 

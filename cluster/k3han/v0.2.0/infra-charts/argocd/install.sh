@@ -1,5 +1,5 @@
 # Define Helm chart variables
-CHART_VERSION=7.9.1          # ArgoCD chart version
+CHART_VERSION=8.2.7         # ArgoCD chart version
 CHART_NAME=argo/argo-cd      # Chart repo/name
 RELEASE_NAME=argocd          # Helm release name
 NAMESPACE=gitops             # Target namespace
