@@ -112,4 +112,5 @@ server:
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
       nginx.ingress.kubernetes.io/force-ssl-redirect: "false" 
     ingressClassName: "nginx-private"
+    hostname: k3han.omh.idv.tw
     path: /argocd
