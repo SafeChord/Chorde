@@ -1,33 +1,32 @@
+# to avoid permission issues when using volumes
 volumePermissions:
   enabled: true
 
+# assign a fixed clusterId for kraft mode to avoid re-creating topics when restarting the cluster
 kraft:
   clusterId: "mz12ORtFQnCth0vuyApZBw"
 
-controller:
-  replicaCount: 1
-  affinity:
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: chorde.io/tier
-                operator: In
-                values:
-                  - medium
-              - key: chorde.io/region
-                operator: In
-                values:
-                  - tw
-  persistence:
-    enabled: true
-    storageClass: local-nfs
-    accessModes:
-      - ReadWriteOnce
-    size: 1Gi
 
-broker:
+# change security protocol to PLAINTEXT(disable TLS and SASL authentication)
+# only for testing or development environment
+listeners:
+  client:
+    protocol: PLAINTEXT
+  controller:
+    protocol: PLAINTEXT
+  interbroker:
+    protocol: PLAINTEXT
+  external:
+    protocol: PLAINTEXT
+
+# controller is also a broker
+controller:
+  # the number of controller nodes have to be an odd number (1, 3, 5, ...) for voting algorithm
   replicaCount: 1
+
+  # the resource preset should be medium or higher，else you may encounter OOMKilled issue
+  resourcesPreset: "medium"
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -41,6 +40,11 @@ broker:
                 operator: In
                 values:
                   - tw
+  
+  # using bitnami/kafka for a "lightweight" instance within the system.
+  # Persistent Volume allocation is limited to 5Gi due to hardware constraints.
+  # community recommendation is 10Gi at least (5Gi is acceptable for short-term testing).
+  # future hardware upgrades should prioritize allocating at least 10Gi to Kafka.
   persistence:
     enabled: true
     storageClass: local-nfs
