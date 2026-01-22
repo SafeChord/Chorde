@@ -11,7 +11,7 @@ spec:
       ref: chorde-repo
     
     - repoURL: https://kedacore.github.io/charts
-      chart: kedacore/keda
+      chart: keda
       targetRevision: 2.17.2
       helm:
         valueFiles:
