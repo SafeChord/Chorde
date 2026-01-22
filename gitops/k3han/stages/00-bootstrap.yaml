@@ -9,7 +9,7 @@ spec:
   project: chorde
   source:
     repoURL: https://github.com/rebodutch/Chorde.git
-    targetRevision: HEAD
+    targetRevision: feat/gitops-v2-refactor
     path: gitops/k3han/manifests/00-bootstrap
   destination:
     server: https://kubernetes.default.svc
