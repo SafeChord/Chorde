@@ -3,8 +3,6 @@ kind: Application
 metadata:
   name: stage-bootstrap
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   project: chorde
   source:
@@ -12,11 +10,9 @@ spec:
     targetRevision: feat/gitops-v2-refactor
     path: gitops/k3han/manifests/00-bootstrap
   destination:
-    server: https://kubernetes.default.svc
+    server: 'https://kubernetes.default.svc'
     namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
