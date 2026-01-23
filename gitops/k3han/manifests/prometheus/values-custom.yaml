@@ -65,6 +65,13 @@ prometheus-node-exporter:
     enabled: false
 
 prometheusOperator:
+  admissionWebhooks:
+    patch:
+        registry: docker.io
+        repository: jkroepke/kube-webhook-certgen
+        tag: v1.7.4
+        sha: ""
+  
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -101,3 +108,4 @@ prometheus:
           resources:
             requests:
               storage: 10Gi
+    
