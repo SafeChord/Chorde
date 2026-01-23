@@ -67,6 +67,7 @@ prometheus-node-exporter:
 prometheusOperator:
   admissionWebhooks:
     patch:
+      image:
         registry: docker.io
         repository: jkroepke/kube-webhook-certgen
         tag: v1.7.4
