@@ -12,7 +12,7 @@ spec:
       targetRevision: feat/gitops-v2-refactor
       ref: chorde-repo
     
-    - repoURL: https://ingress-nginx.github.io/ingress-nginx
+    - repoURL: https://kubernetes.github.io/ingress-nginx
       chart: ingress-nginx
       targetRevision: 4.14.1
       helm:
