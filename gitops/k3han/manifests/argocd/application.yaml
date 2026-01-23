@@ -3,8 +3,6 @@ kind: Application
 metadata:
   name: argocd
   namespace: argocd
-  labels:
-    archetype: bootstrap
 spec:
   project: chorde
   sources:

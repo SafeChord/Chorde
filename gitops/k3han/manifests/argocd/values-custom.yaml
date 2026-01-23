@@ -105,12 +105,12 @@ server:
       operator: Exists
       effect: NoSchedule
       
-  # ingress:
-  #   enabled: true
-  #   annotations:
-  #     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  #     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-  #     nginx.ingress.kubernetes.io/force-ssl-redirect: "false" 
-  #   ingressClassName: "nginx-private"
-  #   hostname: k3han.omh.idv.tw
-  #   path: /argocd
+  ingress:
+    enabled: true
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false" 
+    ingressClassName: "nginx-private"
+    hostname: k3han.omh.idv.tw
+    path: /argocd
