@@ -70,7 +70,7 @@ prometheusOperator:
       image:
         registry: docker.io
         repository: jkroepke/kube-webhook-certgen
-        tag: v1.7.4
+        tag: 1.7.4
         sha: ""
   
   affinity:
