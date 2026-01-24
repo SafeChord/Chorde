@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: sealed-secrets
   namespace: argocd
+  labels: 
+    k3han.io/service: sealed-secrets
+    argocd.argoproj.io/managed-by: application
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
@@ -17,7 +20,7 @@ spec:
       targetRevision: 2.17.9
       helm:
         valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/sealed-secret/values-custom.yaml
+          - $chorde-repo/gitops/k3han/manifests/sealed-secrets/values-custom.yaml
     
   destination:
     server: 'https://kubernetes.default.svc'

@@ -26,9 +26,9 @@ spec:
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:
-        k3han.chorde.io/stage: '{{stage}}'
-        k3han.chorde.io/service: '{{service}}'
-        k3han.chorde.io/managed-by: applicationset
+        k3han.io/stage: '{{stage}}'
+        k3han.io/service: '{{service}}'
+        argocd.argoproj.io/managed-by: applicationSet
     spec:
       project: chorde
       source:
