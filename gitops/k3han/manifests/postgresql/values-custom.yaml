@@ -37,6 +37,8 @@ primary:
 readReplicas:
   enabled: true
   replicaCount: 1
+  fips:
+    openssl: "off"
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
