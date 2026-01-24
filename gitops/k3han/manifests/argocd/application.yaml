@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: argocd
   namespace: argocd
+  labels:
+    k3han.io/service: argocd
+    argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
   sources:
