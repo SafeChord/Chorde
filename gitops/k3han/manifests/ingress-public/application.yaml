@@ -3,6 +3,9 @@ kind: Application
 metadata:
   name: ingress-public
   namespace: argocd
+  labels:
+    k3han.io/service: ingress-public
+    argocd.argoproj.io/managed-by: application
   finalizers:
   - resources-finalizer.argocd.argoproj.io
 spec:
