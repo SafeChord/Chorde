@@ -1,4 +1,10 @@
-# tou have to change architecture to replication if you want at least one replica
+global:
+  ## @param global.defaultFips Default value for the FIPS configuration (allowed values: '', restricted, relaxed, off). Can be overriden by the 'fips' object
+  ##  Configure FIPS mode: '', 'restricted', 'relaxed', 'off'
+  ## 
+  defaultFips: ""
+
+# You have to change architecture to replication if you want at least one replica
 # standlone or replication
 architecture: replication
 
