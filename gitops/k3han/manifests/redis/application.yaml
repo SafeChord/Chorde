@@ -8,8 +8,6 @@ metadata:
   labels:
     k3han.io/service: redis
     argocd.argoproj.io/managed-by: application
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   project: chorde
   sources:
