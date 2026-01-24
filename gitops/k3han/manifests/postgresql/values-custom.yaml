@@ -9,6 +9,8 @@ global:
 architecture: replication
 
 primary:
+  fips:
+    openssl: "off"
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
