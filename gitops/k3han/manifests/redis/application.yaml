@@ -1,10 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: keda
+  name: bitnami-redis
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   finalizers:
-  - resources-finalizer.argocd.argoproj.io
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: chorde
   sources:
@@ -12,16 +14,16 @@ spec:
       targetRevision: feat/gitops-v2-refactor
       ref: chorde-repo
     
-    - repoURL: https://kedacore.github.io/charts
-      chart: keda
-      targetRevision: 2.17.2
+    - repoURL: https://charts.bitnami.com/bitnami
+      chart: redis
+      targetRevision: 23.2.12
       helm:
         valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/keda/values-custom.yaml
+          - $chorde-repo/gitops/k3han/manifests/redis/values-custom.yaml
     
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: bootstrap
+    namespace: redis
 
   syncPolicy:
     automated:
