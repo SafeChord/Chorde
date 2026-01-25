@@ -12,9 +12,9 @@ spec:
           - service: prometheus
             wave: "1"               
             stage: serive
-          - service: loki
-            wave: "1"
-            stage: service
+          # - service: loki
+          #   wave: "1"
+          #   stage: service
           - service: system-upgrade-plan
             wave: "1"
             stage: service

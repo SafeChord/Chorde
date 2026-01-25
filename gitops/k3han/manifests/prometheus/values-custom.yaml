@@ -64,15 +64,7 @@ prometheus-node-exporter:
   hostRootFsMount:
     enabled: false
 
-prometheusOperator:
-  admissionWebhooks:
-    patch:
-      image:
-        registry: docker.io
-        repository: jkroepke/kube-webhook-certgen
-        tag: 1.7.4
-        sha: ""
-  
+prometheusOperator:  
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
