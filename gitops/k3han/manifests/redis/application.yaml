@@ -27,10 +27,10 @@ spec:
     namespace: redis
   
   ignoreDifferences:
-    - group: "*"
-      kind: "*"
-      jsonPointers:
-      - /metadata/creationTimestamp
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].metadata.creationTimestamp
 
   syncPolicy:
     automated:
