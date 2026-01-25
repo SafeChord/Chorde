@@ -2,6 +2,13 @@
 ##
 architecture: standalone
 
+## because of bitnami's internal policy change we need to specify the image 
+image:
+  registry: registry-1.docker.io
+  repository: bitnami/redis
+  tag: ""
+  digest: "sha256:b2ccacecba0945e1da5c93e8e9e6c4c7af579514941224a7d80a2fc8dfb09f6c"
+
 auth:
   existingSecret: redis-secret
   ## @param auth.existingSecretPasswordKey Password key to be retrieved from existing secret

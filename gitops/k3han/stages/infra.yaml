@@ -15,9 +15,9 @@ spec:
           - service: ingress-public
             wave: "1"                
             stage: infra
-          - service: postgresql
-            wave: "1"
-            stage: infra
+          # - service: postgresql
+          #   wave: "1"
+          #   stage: infra
           - service: redis
             wave: "1"
             stage: infra 

@@ -18,6 +18,9 @@ spec:
           - service: system-upgrade
             wave: "1"
             stage: bootstrap
+          - service: cloudnative-pg
+            wave: "1"
+            stage: bootstrap
   template:
     metadata:
       name: 'bootstrap-{{service}}'

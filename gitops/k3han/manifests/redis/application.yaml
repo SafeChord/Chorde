@@ -17,7 +17,7 @@ spec:
     
     - repoURL: https://charts.bitnami.com/bitnami
       chart: redis
-      targetRevision: 23.2.12
+      targetRevision: 24.1.2
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/redis/values-custom.yaml
