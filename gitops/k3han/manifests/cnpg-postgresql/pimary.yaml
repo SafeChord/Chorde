@@ -30,12 +30,9 @@ spec:
   storage:
     size: 10Gi
     storageClass: local-path
-
-  bootstrap:
-    initdb:
-      owner: postgres
-      secret:
-        name: postgresql-secret 
+    
+  superuserSecret:
+      name: postgresql-secret
   
   postgresql:
     pg_hba:
