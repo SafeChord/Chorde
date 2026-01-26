@@ -10,21 +10,18 @@ spec:
     - list:
         elements:
           - service: prometheus
-            wave: "1"               
-            stage: serive
+            wave: "1"
           # - service: loki
           #   wave: "1"
-          #   stage: service
           - service: system-upgrade-plan
             wave: "1"
-            stage: service
   template:
     metadata:
       name: 'infra-{{service}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:
-        k3han.io/stage: '{{stage}}'
+        k3han.io/stage: service
         k3han.io/service: '{{service}}'
         argocd.argoproj.io/managed-by: applicationSet
     spec:

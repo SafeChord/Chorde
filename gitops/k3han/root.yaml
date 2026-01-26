@@ -3,8 +3,6 @@ kind: Application
 metadata:
   name: k3han-root
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
   project: chorde
   source:

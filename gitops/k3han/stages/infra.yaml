@@ -9,28 +9,27 @@ spec:
   generators:
     - list:
         elements:
+          - service: cnpg-operator
+            wave: "-1"
           - service: ingress-private
             wave: "1"               
-            stage: infra
           - service: ingress-public
-            wave: "1"                
-            stage: infra
+            wave: "1"              
+          - service: cnpg-postgresql
+            wave: "1"
           # - service: postgresql
           #   wave: "1"
-          #   stage: infra
           - service: redis
             wave: "1"
-            stage: infra 
           # - service: kafka
           #   wave: "1"
-          #   stage: infra
   template:
     metadata:
       name: 'infra-{{service}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:
-        k3han.io/stage: '{{stage}}'
+        k3han.io/stage: infra
         k3han.io/service: '{{service}}'
         argocd.argoproj.io/managed-by: applicationSet
     spec:
