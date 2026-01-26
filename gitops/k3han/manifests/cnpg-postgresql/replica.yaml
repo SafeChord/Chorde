@@ -21,6 +21,10 @@ spec:
                 operator: In
                 values: ["tw"]
 
+  bootstrap:
+    pg_basebackup:
+      source: primary-cluster 
+
   replica:
     enabled: true
     source: primary-cluster
