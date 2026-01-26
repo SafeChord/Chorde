@@ -30,14 +30,7 @@ spec:
   storage:
     size: 10Gi
     storageClass: local-path
-  
-  managed:
-    roles:
-      - name: streaming_replica
-        ensure: present
-        login: true
-        replication: true
-        
+
   bootstrap:
     initdb:
       owner: postgres
