@@ -36,3 +36,12 @@ spec:
       owner: postgres
       secret:
         name: postgresql-secret 
+  
+  postgresql:
+    pg_hba:
+      # 1. 允許 streaming_replica 這個人連進來做 replication (同步)
+      # 這裡我們用 '0.0.0.0/0' 是因為你的 Pod IP 會隨跨國隧道變動
+      - host  replication  streaming_replica  0.0.0.0/0  scram-sha-256
+      
+      # 2. 允許 streaming_replica 連進 postgres 庫 (握手用)
+      - host  postgres     streaming_replica  0.0.0.0/0  scram-sha-256
