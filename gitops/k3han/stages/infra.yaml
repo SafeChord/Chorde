@@ -15,8 +15,8 @@ spec:
             wave: "1"               
           - service: ingress-public
             wave: "1"              
-          - service: cnpg-postgresql
-            wave: "1"
+          # - service: cnpg-postgresql
+          #   wave: "1"
           # - service: postgresql
           #   wave: "1"
           - service: redis
