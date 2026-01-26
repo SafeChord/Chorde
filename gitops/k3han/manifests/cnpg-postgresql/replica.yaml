@@ -33,7 +33,7 @@ spec:
     - name: primary-cluster
       connectionParameters:
         host: db-primary-rw.database.svc.cluster.local
-        user: streaming_replica
+        user: postgres
         dbname: postgres
       password:
         name: postgresql-secret
