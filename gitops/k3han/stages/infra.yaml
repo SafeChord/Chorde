@@ -17,12 +17,10 @@ spec:
             wave: "1"              
           - service: cnpg-postgresql
             wave: "1"
-          # - service: postgresql
+          # - service: redis
           #   wave: "1"
-          - service: redis
+          - service: valkey
             wave: "1"
-          # - service: kafka
-          #   wave: "1"
   template:
     metadata:
       name: 'infra-{{service}}'
