@@ -9,9 +9,9 @@ spec:
   generators:
     - list:
         elements:
-          - service: cnpg-operator
-            wave: "-1"
-            ssa: "true"
+          # - service: cnpg-operator
+          #   wave: "-1"
+          #   ssa: "true"
           - service: strimizi-operator
             wave: "-1"
             ssa: "true"
@@ -19,8 +19,8 @@ spec:
             wave: "1"               
           - service: ingress-public
             wave: "1"              
-          - service: cnpg-postgresql
-            wave: "1"
+          # - service: cnpg-postgresql
+          #   wave: "1"
           - service: valkey
             wave: "1"
   template:
