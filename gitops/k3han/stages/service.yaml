@@ -17,7 +17,7 @@ spec:
             wave: "1"
   template:
     metadata:
-      name: 'infra-{{service}}'
+      name: 'service-{{service}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:

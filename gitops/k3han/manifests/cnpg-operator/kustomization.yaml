@@ -3,6 +3,6 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - strimizi-0.50.0.yaml
+  - cnpg-1.28.0.yaml
 
 namespace: database
