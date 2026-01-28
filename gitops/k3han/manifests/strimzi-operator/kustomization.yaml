@@ -15,9 +15,14 @@ patches:
       name: strimzi-cluster-operator
     patch: |-
       - op: add
-        path: /spec/template/spec/nodeSelector
+        path: /spec/template/spec/affinity
         value:
-          node.safechord.io/role: control-plane
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
       - op: add
         path: /spec/template/spec/tolerations
         value:
