@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - strimizi-0.50.0.yaml
+  - strimzi-0.50.0.yaml
 
 namespace: kafka
 
