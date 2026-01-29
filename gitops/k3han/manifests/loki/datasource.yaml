@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+data:
+  loki-datasource.yaml: |-
+    apiVersion: 1
+    datasources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki.loki.svc:3100
+      version: 1
+      isDefault: false
+      jsonData:
+        tlsSkipVerify: true

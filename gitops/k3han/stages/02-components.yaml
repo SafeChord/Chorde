@@ -1,35 +1,27 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: k3han-infra
+  name: k3han-components
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   generators:
     - list:
         elements:
-          - service: cnpg-operator
-            wave: "-1"
-            ssa: "true"
-          - service: strimzi-operator
-            wave: "-1"
-            ssa: "true"
-          - service: ingress-private
-            wave: "1"               
-          - service: ingress-public
-            wave: "1"              
           - service: cnpg-postgresql
             wave: "1"
+          # - service: strimzi-kafka
+          #   wave: "1"
           - service: valkey
             wave: "1"
   template:
     metadata:
-      name: 'infra-{{service}}'
+      name: 'components-{{service}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:
-        k3han.io/stage: infra
+        k3han.io/stage: components
         k3han.io/service: '{{service}}'
         argocd.argoproj.io/managed-by: applicationSet
     spec:
@@ -45,5 +37,3 @@ spec:
         automated:
           prune: true
           selfHeal: true
-        syncOptions:
-          - ServerSideApply={{ default "false" .ssa }}

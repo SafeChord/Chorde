@@ -1,27 +1,36 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: k3han-bootstrap
+  name: k3han-platform
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   generators:
     - list:
         elements:
-          - service: sealed-secrets
-            wave: "1"               
-          - service: keda
+          # Operators
+          - service: cnpg-operator
             wave: "1"
-          - service: system-upgrade
+            ssa: "true"
+          - service: strimzi-operator
             wave: "1"
+            ssa: "true"
+          
+          # Observability & Maintenance
+          - service: prometheus
+            wave: "2"
+          - service: loki
+            wave: "2"
+          - service: system-upgrade-plan
+            wave: "2"
   template:
     metadata:
-      name: 'bootstrap-{{service}}'
+      name: 'platform-{{service}}'
       annotations:
         argocd.argoproj.io/sync-wave: '{{wave}}'
       labels:
-        k3han.io/stage: bootstrap
+        k3han.io/stage: platform
         k3han.io/service: '{{service}}'
         argocd.argoproj.io/managed-by: applicationSet
     spec:
@@ -37,3 +46,5 @@ spec:
         automated:
           prune: true
           selfHeal: true
+        syncOptions:
+          - ServerSideApply={{ default "false" .ssa }}

@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    k3han.io/service: loki-stack
+    argocd.argoproj.io/managed-by: application
+spec:
+  project: chorde
+  sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: feat/gitops-v2-refactor
+      ref: chorde-repo
+    
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki-stack
+      targetRevision: 2.10.2
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/manifests/loki/values-custom.yaml
+    
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: loki
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

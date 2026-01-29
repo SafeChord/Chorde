@@ -1,0 +1,44 @@
+test_pod:
+  enabled: false
+
+loki:
+  isDefault: false
+  persistence:
+    enabled: true
+    storageClassName: local-path
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+promtail:
+  # Promtail runs as a DaemonSet on all nodes, so no affinity needed usually.
+  # But if we want to restrict log collection, we can add it.
+  # Default is to run on all nodes.
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 50Mi
+    limits:
+      cpu: 500m
+      memory: 300Mi
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
