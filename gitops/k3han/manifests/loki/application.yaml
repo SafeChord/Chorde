@@ -26,6 +26,12 @@ spec:
     server: 'https://kubernetes.default.svc'
     namespace: loki
 
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates/0/metadata
+
   syncPolicy:
     automated:
       prune: true
