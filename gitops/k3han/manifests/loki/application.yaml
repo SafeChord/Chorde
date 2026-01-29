@@ -29,8 +29,8 @@ spec:
   ignoreDifferences:
     - group: apps
       kind: StatefulSet
-      jsonPointers:
-        - /spec/volumeClaimTemplates/0/metadata
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].metadata
 
   syncPolicy:
     automated:
@@ -38,5 +38,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
-      - RespectIgnoreDifferences=true
