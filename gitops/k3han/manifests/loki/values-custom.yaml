@@ -42,3 +42,7 @@ promtail:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists
       effect: NoSchedule
+    - key: chorde.io/purpose
+      operator: Equal
+      value: proxy-only            
+      effect: NoSchedule 
