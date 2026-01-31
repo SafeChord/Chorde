@@ -1,6 +1,12 @@
 test_pod:
   enabled: false
 
+grafana:
+  enabled: false
+  sidecar:
+    datasources:
+      enabled: false
+
 loki:
   auth_enabled: false
   commonConfig:
