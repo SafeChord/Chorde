@@ -34,6 +34,12 @@ grafana:
       root_url: "http://k3han.omh.idv.tw/grafana/"
       serve_from_sub_path: true
 
+  sidecar:
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+      searchNamespace: ALL
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
