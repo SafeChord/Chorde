@@ -1,12 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: loki-stack
+  name: loki
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
   labels:
-    k3han.io/service: loki-stack
+    k3han.io/service: loki
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
@@ -16,8 +16,8 @@ spec:
       ref: chorde-repo
     
     - repoURL: https://grafana.github.io/helm-charts
-      chart: loki-stack
-      targetRevision: 2.10.2
+      chart: loki
+      targetRevision: 6.46.0 
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/loki/values-custom.yaml

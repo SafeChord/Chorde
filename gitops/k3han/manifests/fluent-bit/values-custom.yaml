@@ -1,0 +1,59 @@
+kind: DaemonSet
+nodeSelector:
+  chorde.io/tier: low
+
+tolerations:
+  - key: chorde.io/purpose
+    operator: Equal
+    value: proxy-only
+    effect: NoSchedule
+
+metrics:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+dashboards:
+  enabled: false
+
+config:
+  service: |
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+        HTTP_Server  Off
+
+  inputs: |
+    [INPUT]
+        Name             tail
+        Path             /var/log/containers/*.log
+        Parser           docker
+        Tag              kube.*
+        Refresh_Interval 5
+        Mem_Buf_Limit    5MB
+        Skip_Long_Lines  On
+
+  filters: |
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+
+  outputs: |
+    [OUTPUT]
+        Name        loki
+        Match       *
+        Host        loki.loki.svc.cluster.local
+        Port        3100
+        Labels      job=fluent-bit, node=$NODE_NAME
+        Auto_Kubernetes_Labels on

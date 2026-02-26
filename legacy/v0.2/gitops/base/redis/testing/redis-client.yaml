@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-client-test
+  namespace: system-redis
+spec:
+  containers:
+  - name: redis-client
+    image: bitnami/redis:7.4.3-debian-12-r0
+    command: ["sleep", "infinity"]
+  restartPolicy: Never

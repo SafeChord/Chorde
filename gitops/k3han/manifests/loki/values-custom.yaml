@@ -1,11 +1,4 @@
-test_pod:
-  enabled: false
-
-grafana:
-  enabled: false
-  sidecar:
-    datasources:
-      enabled: false
+deploymentMode: SingleBinary
 
 loki:
   auth_enabled: false
@@ -20,10 +13,17 @@ loki:
         index:
           prefix: index_
           period: 24h
-  isDefault: false
+  storage:
+    type: filesystem
+  storage_config:
+    filesystem:
+      directory: /var/loki/chunks
+
+singleBinary:
+  replicas: 1
   persistence:
     enabled: true
-    storageClassName: local-path
+    storageClass: local-path
     size: 10Gi
   resources:
     requests:
@@ -44,23 +44,19 @@ loki:
       operator: Exists
       effect: NoSchedule
 
-promtail:
-  # Promtail runs as a DaemonSet on all nodes, so no affinity needed usually.
-  # But if we want to restrict log collection, we can add it.
-  # Default is to run on all nodes.
-  enabled: true
-  resources:
-    requests:
-      cpu: 50m
-      memory: 50Mi
-    limits:
-      cpu: 500m
-      memory: 300Mi
-  tolerations:
-    - key: node-role.kubernetes.io/control-plane
-      operator: Exists
-      effect: NoSchedule
-    - key: chorde.io/purpose
-      operator: Equal
-      value: proxy-only            
-      effect: NoSchedule 
+# Disable components we don't need or want to manage separately
+gateway:
+  enabled: false # We use the single binary directly
+monitoring:
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false
+  serviceMonitor:
+    enabled: false
+  selfMonitoring:
+    enabled: false
+    grafanaAgent:
+      installOperator: false
+test:
+  enabled: false
