@@ -23,7 +23,7 @@ config:
         Daemon       Off
         Log_Level    info
         Parsers_File parsers.conf
-        HTTP_Server  Off
+        HTTP_Server  On
 
   inputs: |
     [INPUT]
