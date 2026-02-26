@@ -20,6 +20,13 @@ loki:
       directory: /var/loki/chunks
 
 chunksCache:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 1Gi
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -33,6 +40,13 @@ chunksCache:
       effect: NoSchedule
 
 resultsCache:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
