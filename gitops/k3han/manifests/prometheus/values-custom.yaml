@@ -37,7 +37,7 @@ grafana:
   sidecar:
     datasources:
       enabled: true
-      defaultDatasourceEnabled: false
+      defaultDatasourceEnabled: true
       searchNamespace: ALL
 
   affinity:
