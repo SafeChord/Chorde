@@ -26,8 +26,13 @@ alloy:
         role = "pod"
       }
 
-      discovery.relabel "pod_logs" {
-        targets = discovery.kubernetes.pods.targets
+      loki.source.kubernetes "pods" {
+        targets    = discovery.kubernetes.pods.targets
+        forward_to = [loki.relabel.pod_logs.receiver]
+      }
+
+      loki.relabel "pod_logs" {
+        forward_to = [loki.write.local.receiver]
 
         rule {
           source_labels = ["__meta_kubernetes_pod_node_name"]
@@ -49,18 +54,6 @@ alloy:
           source_labels = ["__meta_kubernetes_pod_container_name"]
           target_label  = "container"
         }
-
-        rule {
-          // Adapt to k3s path format: namespace_podname_uid
-          replacement  = "/var/log/pods/*_*_$1/*/*.log"
-          source_labels = ["__meta_kubernetes_pod_uid"]
-          target_label  = "__path__"
-        }
-      }
-
-      loki.source.file "pods" {
-        targets    = discovery.relabel.pod_logs.output
-        forward_to = [loki.write.local.receiver]
       }
 
       loki.write "local" {
