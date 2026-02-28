@@ -58,7 +58,6 @@ alloy:
       }
 
       loki.source.file "pods" {
-        # 修正這裡：從 .outputs 改為 .output
         targets    = discovery.relabel.pod_logs.output
         forward_to = [loki.write.local.receiver]
       }
