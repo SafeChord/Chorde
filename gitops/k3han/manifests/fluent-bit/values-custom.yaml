@@ -47,6 +47,7 @@ config:
         Merge_Log_Key       log_processed
         K8S-Logging.Parser  On
         K8S-Logging.Exclude Off
+        Buffer_Size         32k
 
   outputs: |
     [OUTPUT]
@@ -55,4 +56,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
+        Label_Keys  $kubernetes['namespace_name'], $kubernetes['pod_name'], $kubernetes['container_name']
         Auto_Kubernetes_Labels on
