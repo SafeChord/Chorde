@@ -51,11 +51,6 @@ alloy:
         }
 
         rule {
-          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-          target_label  = "app"
-        }
-
-        rule {
           replacement  = "/var/log/pods/$1/*/*.log"
           source_labels = ["__meta_kubernetes_pod_uid"]
           target_label  = "__path__"
@@ -63,7 +58,8 @@ alloy:
       }
 
       loki.source.file "pods" {
-        targets    = discovery.relabel.pod_logs.outputs
+        # 修正這裡：從 .outputs 改為 .output
+        targets    = discovery.relabel.pod_logs.output
         forward_to = [loki.write.local.receiver]
       }
 
