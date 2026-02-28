@@ -23,7 +23,20 @@ config:
         Daemon       Off
         Log_Level    info
         Parsers_File parsers.conf
+        Parsers_File custom_parsers.conf
         HTTP_Server  On
+
+  customParsers: |
+    [PARSER]
+        Name docker_no_time
+        Format json
+        Time_Keep Off
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+    [PARSER]
+        Name k8s-tag-parser
+        Format regex
+        Regex ^(?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
 
   inputs: |
     [INPUT]
@@ -43,6 +56,8 @@ config:
         Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
         Kube_Tag_Prefix     kube.var.log.containers.
+        # 強制使用 Regex 解析標籤，確保 hostNetwork Pod 也能被識別
+        Kube_Tag_Regex      (?<pod_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*)_(?<namespace_name>[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
         Merge_Log           On
         Merge_Log_Key       log_processed
         K8S-Logging.Parser  On
