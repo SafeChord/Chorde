@@ -26,27 +26,17 @@ alloy:
         role = "pod"
       }
 
-      // 修正點 1：將節點過濾移至服務發現階段，這時才能用到 __meta 標籤
       discovery.relabel "local_pods" {
         targets = discovery.kubernetes.pods.targets
 
+        // 1. 節點過濾
         rule {
           source_labels = ["__meta_kubernetes_pod_node_name"]
           action = "keep"
           regex  = env("HOSTNAME")
         }
-      }
 
-      // 修正點 2：使用過濾後的 targets
-      loki.source.kubernetes "pods" {
-        targets    = discovery.relabel.local_pods.output
-        forward_to = [loki.relabel.pod_logs.receiver]
-      }
-
-      // 修正點 3：這裡只處理正式標籤的映射，不再進行節點過濾
-      loki.relabel "pod_logs" {
-        forward_to = [loki.write.local.receiver]
-
+        // 2. 關鍵標籤轉正 (必須在這裡做，否則採集後就抓不到了)
         rule {
           source_labels = ["__meta_kubernetes_namespace"]
           target_label  = "namespace"
@@ -61,6 +51,16 @@ alloy:
           source_labels = ["__meta_kubernetes_pod_container_name"]
           target_label  = "container"
         }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.local_pods.output
+        forward_to = [loki.write.local.receiver]
       }
 
       loki.write "local" {
