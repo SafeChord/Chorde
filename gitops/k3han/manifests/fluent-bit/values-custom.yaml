@@ -36,8 +36,8 @@ config:
     [PARSER]
         Name k8s-tag-parser
         Format regex
-        # 修正 Regex：直接匹配為 namespace, pod, container
-        Regex ^(?<pod>[^_]+)_(?<namespace>[^_]+)_(?<container>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+        # 修正 Regex：使用原本的工作版本標籤名
+        Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
 
   inputs: |
     [INPUT]
@@ -71,5 +71,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $kubernetes['namespace'], $kubernetes['pod'], $kubernetes['container']
+        Label_Keys  $kubernetes['namespace_name'], $kubernetes['pod_name'], $kubernetes['container_name']
         Auto_Kubernetes_Labels on
