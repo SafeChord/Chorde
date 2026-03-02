@@ -80,5 +80,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  namespace, pod, container, node_name, app
+        Label_Keys  $namespace, $pod, $container, $node_name, $app
         Auto_Kubernetes_Labels off
