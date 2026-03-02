@@ -1,9 +1,8 @@
 # Strimzi Operator Helm Values
 # Ref: https://github.com/strimzi/strimzi-kafka-operator/blob/main/helm-charts/strimzi-kafka-operator/values.yaml
 
-# 限制 Operator 監控的命名空間 (預設是監控安裝所在的命名空間)
-watchNamespaces:
-  - kafka
+# 預設會監控安裝所在的命名空間，因此不需要手動指定 watchNamespaces: [kafka]
+# 以避免 RoleBinding 重複定義導致 ArgoCD 報錯。
 
 # 節點調度與容忍度 (模仿原始 Kustomization 的 Patch)
 nodeSelector:
