@@ -36,9 +36,8 @@ config:
     [PARSER]
         Name k8s-tag-parser
         Format regex
-        # 修正 Regex：K3s 的 Tag 通常包含 kube.var.log.containers. 前綴
-        # 我們直接匹配包含底線分隔的關鍵部分
-        Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+        # 修正 Regex：直接匹配為 namespace, pod, container
+        Regex ^(?<pod>[^_]+)_(?<namespace>[^_]+)_(?<container>.+)-(?<docker_id>[a-z0-9]{64})\.log$
 
   inputs: |
     [INPUT]
@@ -72,5 +71,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $kubernetes['namespace_name'], $kubernetes['pod_name'], $kubernetes['container_name']
+        Label_Keys  $kubernetes['namespace'], $kubernetes['pod'], $kubernetes['container']
         Auto_Kubernetes_Labels on
