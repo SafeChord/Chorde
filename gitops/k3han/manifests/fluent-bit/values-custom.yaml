@@ -36,7 +36,7 @@ config:
     [PARSER]
         Name k8s-tag-parser
         Format regex
-        # 修正 Regex：使用原本的工作版本標籤名
+        # 使用標準 K8s 標籤名以確保 filter 正確解析
         Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
 
   inputs: |
@@ -64,6 +64,15 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
+    [FILTER]
+        Name                modify
+        Match               kube.*
+        Copy                kubernetes['namespace_name'] namespace
+        Copy                kubernetes['pod_name']       pod
+        Copy                kubernetes['container_name'] container
+        Copy                kubernetes['host']           node_name
+        Copy                kubernetes['labels']['app.kubernetes.io/name'] app
+
   outputs: |
     [OUTPUT]
         Name        loki
@@ -71,5 +80,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $kubernetes['namespace_name'], $kubernetes['pod_name'], $kubernetes['container_name']
-        Auto_Kubernetes_Labels on
+        Label_Keys  $namespace, $pod, $container, $node_name, $app
+        Auto_Kubernetes_Labels off
