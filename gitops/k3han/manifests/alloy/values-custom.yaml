@@ -53,6 +53,11 @@ alloy:
         }
 
         rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node_name"
+        }
+
+        rule {
           source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
           target_label  = "app"
         }
@@ -60,7 +65,16 @@ alloy:
 
       loki.source.kubernetes "pods" {
         targets    = discovery.relabel.local_pods.output
+        forward_to = [loki.relabel.agent_label.receiver]
+      }
+
+      loki.relabel "agent_label" {
         forward_to = [loki.write.local.receiver]
+
+        rule {
+          replacement  = "alloy"
+          target_label = "job"
+        }
       }
 
       loki.write "local" {
