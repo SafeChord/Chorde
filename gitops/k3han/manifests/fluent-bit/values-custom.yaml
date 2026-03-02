@@ -64,15 +64,6 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
-    [FILTER]
-        Name                modify
-        Match               kube.*
-        Copy                kubernetes['namespace'] namespace
-        Copy                kubernetes['pod']       pod
-        Copy                kubernetes['container'] container
-        Copy                kubernetes['node_name'] node_name
-        Copy                kubernetes['labels']['app.kubernetes.io/name'] app
-
   outputs: |
     [OUTPUT]
         Name        loki
@@ -80,5 +71,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $namespace, $pod, $container, $node_name, $app
-        Auto_Kubernetes_Labels off
+        Label_Keys  $kubernetes['namespace'], $kubernetes['pod'], $kubernetes['container']
+        Auto_Kubernetes_Labels on
