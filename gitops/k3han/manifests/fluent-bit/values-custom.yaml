@@ -21,7 +21,7 @@ config:
     [SERVICE]
         Flush        1
         Daemon       Off
-        Log_Level    debug
+        Log_Level    info
         Parsers_File parsers.conf
         Parsers_File custom_parsers.conf
         HTTP_Server  On
@@ -52,7 +52,7 @@ config:
         Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
-        Read_from_Head   On
+        Read_from_Head   Off
         Refresh_Interval 5
         Buffer_Chunk_Size 64k
         Buffer_Max_Size  256k
