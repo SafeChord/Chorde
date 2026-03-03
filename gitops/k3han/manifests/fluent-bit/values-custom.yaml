@@ -52,7 +52,6 @@ config:
         Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
-        DB               /var/log/flb_kube.db
         Read_from_Head   On
         Refresh_Interval 5
         Buffer_Chunk_Size 64k
