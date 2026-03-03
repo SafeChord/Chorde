@@ -21,7 +21,7 @@ config:
     [SERVICE]
         Flush        1
         Daemon       Off
-        Log_Level    debug
+        Log_Level    info
         Parsers_File parsers.conf
         Parsers_File custom_parsers.conf
         HTTP_Server  On
@@ -49,10 +49,11 @@ config:
     [INPUT]
         Name             tail
         Path             /var/log/containers/*.log
+        Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
         DB               /var/log/flb_kube.db
-        Read_from_Head   On
+        Read_from_Head   Off
         Refresh_Interval 5
         Buffer_Chunk_Size 64k
         Buffer_Max_Size  256k
@@ -72,11 +73,19 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
+    [FILTER]
+        Name                nest
+        Match               kube.*
+        Operation           lift
+        Nested_under        kubernetes
+        Add_prefix          k8s_
+
   outputs: |
     [OUTPUT]
         Name        loki
         Match       *
-        Host        loki-mock.loki.svc.cluster.local
+        Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Auto_Kubernetes_Labels on
+        Label_Keys  $k8s_pod_name, $k8s_namespace_name, $k8s_container_name
+        Auto_Kubernetes_Labels off
