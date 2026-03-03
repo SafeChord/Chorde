@@ -21,7 +21,7 @@ config:
     [SERVICE]
         Flush        1
         Daemon       Off
-        Log_Level    debug
+        Log_Level    info
         Parsers_File parsers.conf
         Parsers_File custom_parsers.conf
         HTTP_Server  On
@@ -49,6 +49,7 @@ config:
     [INPUT]
         Name             tail
         Path             /var/log/containers/*.log
+        Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
         Refresh_Interval 5
