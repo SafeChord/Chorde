@@ -38,12 +38,18 @@ config:
         Format regex
         # 使用標準 K8s 標籤名以確保 filter 正確解析
         Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
+    [PARSER]
+        Name cri
+        Format regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]+) (?<message>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 
   inputs: |
     [INPUT]
         Name             tail
         Path             /var/log/containers/*.log
-        Parser           docker
+        Parser           cri
         Tag              kube.*
         Refresh_Interval 5
         Mem_Buf_Limit    5MB
@@ -64,15 +70,6 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
-    [FILTER]
-        Name                modify
-        Match               kube.*
-        Copy                kubernetes['namespace_name'] namespace
-        Copy                kubernetes['pod_name']       pod
-        Copy                kubernetes['container_name'] container
-        Copy                kubernetes['host']           node_name
-        Copy                kubernetes['labels']['app.kubernetes.io/name'] app
-
   outputs: |
     [OUTPUT]
         Name        loki
@@ -80,5 +77,4 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $namespace, $pod, $container, $node_name, $app
-        Auto_Kubernetes_Labels off
+        Auto_Kubernetes_Labels on
