@@ -73,19 +73,11 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
-    [FILTER]
-        Name                nest
-        Match               kube.*
-        Operation           lift
-        Nested_under        kubernetes
-        Add_prefix          k8s_
-
   outputs: |
     [OUTPUT]
         Name        loki
         Match       *
-        Host        loki.loki.svc.cluster.local
+        Host        loki-mock.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $k8s_pod_name, $k8s_namespace_name, $k8s_container_name
-        Auto_Kubernetes_Labels off
+        Auto_Kubernetes_Labels on
