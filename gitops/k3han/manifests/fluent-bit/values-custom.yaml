@@ -52,6 +52,8 @@ config:
         Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
+        DB               /var/log/flb_kube.db
+        Read_from_Head   On
         Refresh_Interval 5
         Buffer_Chunk_Size 64k
         Buffer_Max_Size  256k
@@ -71,6 +73,13 @@ config:
         K8S-Logging.Exclude Off
         Buffer_Size         32k
 
+    [FILTER]
+        Name                modify
+        Match               kube.*
+        Copy                kubernetes['pod_name'] pod
+        Copy                kubernetes['namespace_name'] namespace
+        Copy                kubernetes['container_name'] container
+
   outputs: |
     [OUTPUT]
         Name        loki
@@ -78,4 +87,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Auto_Kubernetes_Labels on
+        Label_Keys  $pod, $namespace, $container
+        Auto_Kubernetes_Labels off
