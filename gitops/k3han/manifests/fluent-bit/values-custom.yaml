@@ -53,7 +53,7 @@ config:
         Parser           cri
         Tag              kube.*
         DB               /var/log/flb_kube.db
-        Read_from_Head   On
+        Read_from_Head   Off
         Refresh_Interval 5
         Buffer_Chunk_Size 64k
         Buffer_Max_Size  256k
@@ -74,11 +74,11 @@ config:
         Buffer_Size         32k
 
     [FILTER]
-        Name                modify
+        Name                nest
         Match               kube.*
-        Copy                kubernetes['pod_name'] pod
-        Copy                kubernetes['namespace_name'] namespace
-        Copy                kubernetes['container_name'] container
+        Operation           lift
+        Nested_under        kubernetes
+        Add_prefix          k8s_
 
   outputs: |
     [OUTPUT]
@@ -87,5 +87,5 @@ config:
         Host        loki.loki.svc.cluster.local
         Port        3100
         Labels      job=fluent-bit
-        Label_Keys  $pod, $namespace, $container
+        Label_Keys  $k8s_pod_name, $k8s_namespace_name, $k8s_container_name
         Auto_Kubernetes_Labels off
