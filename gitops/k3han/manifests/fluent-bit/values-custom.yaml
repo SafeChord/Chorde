@@ -89,3 +89,12 @@ config:
         Labels      job=fluent-bit
         Label_Keys  $k8s_pod_name, $k8s_namespace_name, $k8s_container_name
         Auto_Kubernetes_Labels off
+
+    [OUTPUT]
+        Name        loki
+        Match       *
+        Host        loki-mock.loki.svc.cluster.local
+        Port        3100
+        Labels      job=fluent-bit-debug
+        Label_Keys  $k8s_pod_name, $k8s_namespace_name, $k8s_container_name
+        Auto_Kubernetes_Labels off
