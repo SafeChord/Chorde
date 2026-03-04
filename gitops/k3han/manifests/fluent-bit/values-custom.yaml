@@ -42,7 +42,6 @@ config:
     [INPUT]
         Name             tail
         Path             /var/log/containers/*.log
-        Exclude_Path     /var/log/containers/fluent-bit-*.log
         Parser           cri
         Tag              kube.*
         DB               /var/log/flb_kube.db
@@ -81,11 +80,6 @@ config:
         Add                 job fluent-bit
 
   outputs: |
-    [OUTPUT]
-        Name              stdout
-        Match             *
-        Format            json_lines
-
     [OUTPUT]
         Name              loki
         Match             *
