@@ -91,3 +91,7 @@ config:
         auto_kubernetes_labels off
         line_format       json
         remove_keys       job
+
+    [OUTPUT]
+        Name              stdout
+        Match             *
