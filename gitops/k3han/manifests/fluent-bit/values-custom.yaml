@@ -71,6 +71,15 @@ config:
         Nested_under        kubernetes
         Add_prefix          k8s_
 
+    [FILTER]
+        Name                modify
+        Match               kube.*
+        Rename              k8s_namespace_name namespace
+        Rename              k8s_pod_name pod
+        Rename              k8s_container_name container
+        Rename              k8s_host node_name
+        Add                 job fluent-bit
+
   outputs: |
     [OUTPUT]
         Name            http
