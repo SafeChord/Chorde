@@ -73,12 +73,20 @@ alloy:
       }
 
       loki.relabel "agent_label" {
-        forward_to = [loki.write.local.receiver]
+        forward_to = [loki.process.drop_old.receiver]
 
         rule {
           replacement  = "alloy"
           target_label = "job"
         }
+      }
+
+      loki.process "drop_old" {
+        stage.drop {
+          older_than          = "168h"
+          drop_counter_reason = "entry_too_old"
+        }
+        forward_to = [loki.write.local.receiver]
       }
 
       loki.write "local" {
