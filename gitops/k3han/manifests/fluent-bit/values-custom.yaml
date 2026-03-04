@@ -82,6 +82,11 @@ config:
 
   outputs: |
     [OUTPUT]
+        Name              stdout
+        Match             *
+        Format            json_lines
+
+    [OUTPUT]
         Name              loki
         Match             *
         Host              loki.loki.svc.cluster.local
