@@ -14,16 +14,14 @@ alloy:
   mounts:
     varlog: true
     dockercontainers: false
+  extraArgs:
+    - --disable-reporting
   configMap:
     create: true
     content: |
       logging {
         level  = "info"
         format = "logfmt"
-      }
-
-      reporting {
-        enabled = false
       }
 
       discovery.kubernetes "pods" {
