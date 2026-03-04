@@ -22,10 +22,10 @@ spec:
             wave: "2"
           - service: loki
             wave: "2"
-          - service: alloy
-            wave: "2"
-          - service: fluent-bit
-            wave: "2"
+          # - service: alloy
+          #   wave: "2"
+          # - service: fluent-bit
+          #   wave: "2"
           - service: system-upgrade-plan
             wave: "2"
   template:
