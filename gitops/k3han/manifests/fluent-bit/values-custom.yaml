@@ -82,10 +82,12 @@ config:
 
   outputs: |
     [OUTPUT]
-        Name            http
-        Match           *
-        Host            loki-mock.loki.svc.cluster.local
-        Port            3100
-        URI             /test-log-final
-        Format          json
-        header          X-Diagnostic-Source fluent-bit-refined
+        Name              loki
+        Match             *
+        Host              loki.loki.svc.cluster.local
+        Port              3100
+        Labels            job=fluent-bit
+        label_keys        $namespace,$pod,$container,$node_name
+        auto_kubernetes_labels off
+        line_format       json
+        remove_keys       job
