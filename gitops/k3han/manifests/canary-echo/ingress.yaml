@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: canary-echo-public
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx-public"
+    # 邏輯 A: 預設關閉日誌，除非滿足特定條件
+    # 注意: map 必須在 http 級別定義，但我們可以透過 configuration-snippet 在 location 級別控制
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      set $log_canary "0";
+      if ($http_x_canary_token = "SafeChord-Loki-Probe") {
+        set $log_canary "1";
+      }
+      
+      if ($log_canary = "0") {
+        access_log off;
+        return 404;
+      }
+      
+      # 只有通過檢查才會有 access_log
+      access_log /var/log/nginx/access.log upstreaminfo if=$log_canary;
+spec:
+  rules:
+    - host: "www.omh.idv.tw"
+      http:
+        paths:
+          - path: /canary
+            pathType: Prefix
+            backend:
+              service:
+                name: canary-echo
+                port:
+                  number: 80

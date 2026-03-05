@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary-echo
+  namespace: default
+  labels:
+    app: canary-echo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: canary-echo
+  template:
+    metadata:
+      labels:
+        app: canary-echo
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: acer-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: 50m
+              memory: 32Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: canary-echo
+  namespace: default
+spec:
+  selector:
+    app: canary-echo
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
