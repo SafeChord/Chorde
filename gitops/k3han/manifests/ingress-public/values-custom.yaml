@@ -1,6 +1,5 @@
 controller:
   kind: Deployment
-  allow-snippet-annotations: true
 
   ingressClass: nginx-public
 
