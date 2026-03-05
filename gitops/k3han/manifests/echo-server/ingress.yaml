@@ -8,10 +8,10 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   rules:
-    - host: "testing.omh.idv.tw"
+    - host: "www.omh.idv.tw"
       http:
         paths:
-          - path: /
+          - path: /echo
             pathType: Prefix
             backend:
               service:
