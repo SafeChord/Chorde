@@ -9,7 +9,7 @@ spec:
   generators:
     - list:
         elements:
-          - service: canary-echo
+          - service: echo-server
             wave: "1"
           - service: cnpg-postgresql
             wave: "1"
