@@ -35,6 +35,14 @@ controller:
 
 # security settings
   config:
+    allow-snippet-annotations: "true"
+    http-snippet: |
+      map "$http_x_canary_token:$arg_token" $canary_access {
+          "~5566" 1;
+          "~:5566" 1;
+          default 0;
+      }
+
     enable-real-ip: "true"
     real-ip-header: "X-Forwarded-For"
     set-real-ip-from: "0.0.0.0/0"
