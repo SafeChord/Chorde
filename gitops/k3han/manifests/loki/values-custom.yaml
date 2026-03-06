@@ -8,16 +8,27 @@ loki:
     configs:
       - from: 2024-04-01
         store: tsdb
-        object_store: filesystem
+        object_store: s3
         schema: v13
         index:
           prefix: index_
           period: 24h
   storage:
-    type: filesystem
+    type: s3
+    bucketNames:
+      chunks: amzn-loki-s3-jp
+      ruler: amzn-loki-s3-jp
+      admin: amzn-loki-s3-jp
+    s3:
+      region: ap-northeast-1
+      s3ForcePathStyle: false
+
   storage_config:
-    filesystem:
-      directory: /var/loki/chunks
+    aws:
+      region: ap-northeast-1
+      bucketnames: amzn-loki-s3-jp
+      s3forcepathstyle: false
+
 
 chunksCache:
   resources:
@@ -65,6 +76,17 @@ singleBinary:
     enabled: true
     storageClass: local-path
     size: 10Gi
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: s3-secret
+          key: s3_access_key
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: s3-secret
+          key: s3_secret_key
   resources:
     requests:
       cpu: 500m
