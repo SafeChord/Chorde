@@ -12,7 +12,7 @@ spec:
   project: chorde
   sources:
     - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: feat/gitops-v2-refactor
+      targetRevision: main
       ref: chorde-repo
     
     - repoURL: https://grafana.github.io/helm-charts
