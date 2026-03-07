@@ -9,7 +9,7 @@ spec:
   project: chorde
   source:
     repoURL: https://github.com/SafeChord/Chorde.git
-    targetRevision: feat/gitops-v2-refactor
+    targetRevision: main
     path: gitops/k3han/stages  
   destination:
     server: https://kubernetes.default.svc
