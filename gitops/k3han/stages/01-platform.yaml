@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: k3han-platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  generators:
+    - list:
+        elements:
+          # Operators
+          - service: cnpg-operator
+            wave: "1"
+            ssa: "true"
+          - service: strimzi-operator
+            wave: "1"
+            ssa: "true"
+          
+          # Observability & Maintenance
+          - service: prometheus
+            wave: "2"
+          - service: loki
+            wave: "2"
+          - service: alloy
+            wave: "2"
+          - service: fluent-bit
+            wave: "2"
+          - service: system-upgrade-plan
+            wave: "2"
+  template:
+    metadata:
+      name: 'platform-{{service}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{wave}}'
+      labels:
+        k3han.io/stage: platform
+        k3han.io/service: '{{service}}'
+        argocd.argoproj.io/managed-by: applicationSet
+    spec:
+      project: chorde
+      source:
+        repoURL: https://github.com/SafeChord/Chorde.git
+        targetRevision: feat/gitops-v2-refactor
+        path: 'gitops/k3han/manifests/{{service}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply={{ default "false" .ssa }}

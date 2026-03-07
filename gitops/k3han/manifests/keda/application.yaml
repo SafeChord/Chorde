@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda
+  namespace: argocd
+  labels:
+    k3han.io/service: keda
+    argocd.argoproj.io/managed-by: application
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: chorde
+  sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: feat/gitops-v2-refactor
+      ref: chorde-repo
+    
+    - repoURL: https://kedacore.github.io/charts
+      chart: keda
+      targetRevision: 2.17.2
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/manifests/keda/values-custom.yaml
+    
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: bootstrap
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soak-test
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: soak-test
+  template:
+    metadata:
+      labels:
+        app: soak-test
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions: [{key: app, operator: In, values: ["soak-test"]}]
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: alpine
+        image: alpine
+        command: ["sh", "-c", "sleep infinity"]
+    
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: chorde.io/purpose
+        operator: Equal
+        value: proxy-only            
+        effect: NoSchedule 
+      

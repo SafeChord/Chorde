@@ -1,8 +1,12 @@
 .kube/config
+
 *.log
 *.env
 *.pem
+
 secrets/
 *values-secret.yaml
 *unsealed-secret.yaml
-*-dry*
+unsealed-*
+
+values.yaml

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: acer-nfs-5g-2
+spec:
+  capacity:
+    storage: 5Gi
+  storageClassName: local-nfs
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    path: /mnt/k3s/pv/5g/2
+    server: 192.168.0.2

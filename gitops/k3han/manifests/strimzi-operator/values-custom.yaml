@@ -1,0 +1,26 @@
+# Strimzi Operator Helm Values
+# Ref: https://github.com/strimzi/strimzi-kafka-operator/blob/main/helm-charts/strimzi-kafka-operator/values.yaml
+
+# 預設會監控安裝所在的命名空間，因此不需要手動指定 watchNamespaces: [kafka]
+# 以避免 RoleBinding 重複定義導致 ArgoCD 報錯。
+
+# 節點調度與容忍度 (模仿原始 Kustomization 的 Patch)
+nodeSelector:
+  node-role.kubernetes.io/control-plane: "true"
+
+tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# 資源限制與優化 (如有需要)
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# 指定使用的 ServiceAccount 名稱 (0.50.0 僅接受字串)
+serviceAccount: strimzi-cluster-operator

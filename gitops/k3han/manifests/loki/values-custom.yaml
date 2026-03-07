@@ -1,0 +1,131 @@
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: 2024-04-01
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  storage:
+    type: s3
+    bucketNames:
+      chunks: amzn-loki-s3-jp
+      ruler: amzn-loki-s3-jp
+      admin: amzn-loki-s3-jp
+    s3:
+      region: ap-northeast-1
+      s3ForcePathStyle: false
+
+  storage_config:
+    aws:
+      region: ap-northeast-1
+      bucketnames: amzn-loki-s3-jp
+      s3forcepathstyle: false
+
+
+chunksCache:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+resultsCache:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: local-path
+    size: 10Gi
+  extraEnv:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: s3-secret
+          key: s3_access_key
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: s3-secret
+          key: s3_secret_key
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+# Disable components we don't need or want to manage separately
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+gateway:
+  enabled: false # We use the single binary directly
+monitoring:
+  dashboards:
+    enabled: false
+  rules:
+    enabled: false
+  serviceMonitor:
+    enabled: false
+  selfMonitoring:
+    enabled: false
+    grafanaAgent:
+      installOperator: false
+test:
+  enabled: false

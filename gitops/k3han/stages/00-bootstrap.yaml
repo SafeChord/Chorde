@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: k3han-bootstrap
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  generators:
+    - list:
+        elements:
+          - service: sealed-secrets
+            wave: "1"
+          - service: system-upgrade
+            wave: "1"
+          - service: keda
+            wave: "1"
+          - service: ingress-public
+            wave: "2"
+          - service: ingress-private
+            wave: "2"
+  template:
+    metadata:
+      name: 'bootstrap-{{service}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{wave}}'
+      labels:
+        k3han.io/stage: bootstrap
+        k3han.io/service: '{{service}}'
+        argocd.argoproj.io/managed-by: applicationSet
+    spec:
+      project: chorde
+      source:
+        repoURL: https://github.com/SafeChord/Chorde.git
+        targetRevision: feat/gitops-v2-refactor
+        path: 'gitops/k3han/manifests/{{service}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

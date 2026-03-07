@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cnpg-1.28.0.yaml
+
+namespace: database
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: cnpg-controller-manager
+    patch: |-
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: node-role.kubernetes.io/control-plane
+                      operator: Exists
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+            effect: "NoSchedule"

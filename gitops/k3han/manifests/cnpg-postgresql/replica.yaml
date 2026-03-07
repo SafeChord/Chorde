@@ -1,0 +1,49 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: db-replica
+  namespace: database
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.7
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/tier
+                operator: In
+                values: ["medium"]
+              - key: chorde.io/region
+                operator: In
+                values: ["tw"]
+
+  bootstrap:
+    pg_basebackup:
+      source: primary-cluster 
+
+  replica:
+    enabled: true
+    source: primary-cluster
+
+  externalClusters:
+    - name: primary-cluster
+      connectionParameters:
+        host: db-primary-rw.database.svc.cluster.local
+        user: postgres
+        dbname: postgres
+      password:
+        name: postgresql-secret
+        key: password
+
+  storage:
+    size: 5Gi
+    storageClass: local-nfs
+  
+  postgresql:
+    parameters:
+      wal_receiver_timeout: '60s'
+      max_standby_streaming_delay: '30s'

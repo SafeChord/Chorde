@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: k3han-components
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  generators:
+    - list:
+        elements:
+          - service: echo-server
+            wave: "1"
+          - service: cnpg-postgresql
+            wave: "1"
+          # - service: strimzi-kafka
+          #   wave: "1"
+          - service: valkey
+            wave: "1"
+  template:
+    metadata:
+      name: 'components-{{service}}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{wave}}'
+      labels:
+        k3han.io/stage: components
+        k3han.io/service: '{{service}}'
+        argocd.argoproj.io/managed-by: applicationSet
+    spec:
+      project: chorde
+      source:
+        repoURL: https://github.com/SafeChord/Chorde.git
+        targetRevision: feat/gitops-v2-refactor
+        path: 'gitops/k3han/manifests/{{service}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

@@ -1,0 +1,36 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-private
+  namespace: argocd
+  labels:
+    k3han.io/service: ingress-private
+    argocd.argoproj.io/managed-by: application
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: chorde
+  sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: feat/gitops-v2-refactor
+      ref: chorde-repo
+    
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      chart: ingress-nginx
+      targetRevision: 4.14.1
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/manifests/ingress-private/values-custom.yaml
+    
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: ingress
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

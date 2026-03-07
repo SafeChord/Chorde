@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluent-bit
+  namespace: argocd
+  labels:
+    k3han.io/service: fluent-bit
+    argocd.argoproj.io/managed-by: application
+spec:
+  project: chorde
+  sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: feat/gitops-v2-refactor
+      ref: chorde-repo
+    
+    - repoURL: https://fluent.github.io/helm-charts
+      chart: fluent-bit
+      targetRevision: 0.48.10
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/manifests/fluent-bit/values-custom.yaml
+    
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: loki
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

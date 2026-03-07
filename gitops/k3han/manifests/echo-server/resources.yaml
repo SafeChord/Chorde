@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  namespace: testing
+  labels:
+    app: echo
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      labels:
+        app: echo
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: acer-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.10
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              cpu: 50m
+              memory: 32Mi
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo
+  namespace: testing
+spec:
+  selector:
+    app: echo
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80

@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k3han-root
+  namespace: argocd
+  labels:
+      k3han.io/stage: root
+spec:
+  project: chorde
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: feat/gitops-v2-refactor
+    path: gitops/k3han/stages  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,43 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: db-primary
+  namespace: database
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  instances: 1 
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.7
+  
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: chorde.io/tier
+                operator: In
+                values:
+                  - medium
+              - key: chorde.io/provider
+                operator: NotIn
+                values:
+                  - local
+    tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+  storage:
+    size: 10Gi
+    storageClass: local-path
+
+  enableSuperuserAccess: true
+    
+  superuserSecret:
+      name: postgresql-secret
+  
+  postgresql:
+    pg_hba:
+      # network mask for read replicas 
+      - host replication postgres 10.42.0.0/16 scram-sha-256
+      - host all         postgres 10.42.0.0/16 scram-sha-256
