@@ -13,6 +13,8 @@ alertmanager:
         effect: NoSchedule
 
 grafana:
+  serviceMonitor:
+    enabled: false
   admin:
     existingSecret: grafana-admin-secret
     userKey: admin-user
