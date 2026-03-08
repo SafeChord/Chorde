@@ -1,73 +1,95 @@
 # Chorde: Platform & Infrastructure Layer
 
-Chorde is the foundation of the SafeChord ecosystem. It provides the Kubernetes platform and shared infrastructure services.
+Chorde is the foundation of the SafeChord ecosystem. It provides the Kubernetes platform (K3s) and shared infrastructure services, managed via a pure GitOps workflow.
 
 ## Repository Structure
 
-The repository follows a **Recursive GitOps (App-of-Apps)** architecture, designed for pure declarative management via ArgoCD.
+The repository follows a **Recursive GitOps (App-of-Apps)** architecture, utilizing ArgoCD `ApplicationSet` for layered orchestration and dynamic service deployment.
 
 ```text
 Chorde/
 ├── cluster/                 # Physical infrastructure configuration
-│   └── k3han/               # K3s cluster definitions (versions)
+│   └── k3han/               # K3s cluster definitions
+│       ├── ansible/         # Cluster provisioning playbooks
+│       └── k3s/             # Node-specific systemd units & configs
 │
-├── legacy/                  # Archived configurations (v0.1, v0.2)
+├── gitops/                  # [State] ArgoCD Desired State
+│   └── k3han/
+│       ├── root.yaml        # Entry point: Manages the ApplicationSets in stages/
+│       ├── stages/          # [Layer 0: Orchestrator] Stage-based ApplicationSets
+│       │   ├── 00-bootstrap.yaml   # Basic security & ingress (Wave 1)
+│       │   ├── 01-platform.yaml    # Operators & Observability (Wave 2)
+│       │   └── 02-components.yaml  # Stateful services & App components (Wave 3)
+│       │
+│       └── manifests/       # [Content] Pure Kubernetes Manifests & Helm Apps
+│           ├── argocd/      # ArgoCD self-management
+│           ├── ingress-*/   # Public/Private Nginx controllers
+│           ├── cnpg-*/      # CloudNativePG Operator & Clusters
+│           ├── monitoring/  # Prometheus, Loki, Alloy, Fluent-bit
+│           └── ...          # Other platform services (Keda, SealedSecrets, etc.)
 │
-├── scripts/                 # Bootstrap & Validation tools (Imperative)
-│   ├── bootstrap.sh         # Cluster initialization
-│   └── test/                # Connectivity & Health checks
+├── scripts/                 # Operational & Validation tools
+│   ├── ops/                 # Bootstrap & Secret sealing tools
+│   └── test/                # E2E connectivity & health checks per component
 │
-├── helm-charts/             # [Logic] Local Overrides/Wrappers ONLY
-│   ├── kafka/               # (Example) Heavily customized chart
-│   └── ...                  # Note: Standard services use upstream charts directly in GitOps
-│
-└── gitops/                  # [State] ArgoCD Desired State
-    └── k3han/
-        ├── stages/          # [Layer 0: Orchestrator] Entry points for ArgoCD
-        │   ├── 00-bootstrap.yaml  # Points to manifests/00-bootstrap
-        │   ├── 01-infra.yaml      # Points to manifests/01-infra
-        │   └── 02-ops.yaml        # Points to manifests/02-ops
-        │
-        └── manifests/       # [Content] Pure Kubernetes Manifests
-            ├── 00-bootstrap/      # [Layer 1: App List] List of Applications
-            │   ├── sealed-secret.yaml # Application pointing to manifests/sealed-secret
-            │   └── argocd.yaml
-            │
-            ├── sealed-secret/     # [Layer 2: Resources] Actual Resources
-            │   ├── controller.yaml
-            │   └── crd.yaml
-            │
-            └── kafka/             # [Layer 2: Resources] Actual Resources
-                ├── values.yaml
-                └── sealed-secrets.yaml
+└── legacy/                  # Archived configurations (v0.1, v0.2)
 ```
 
-## Key Principles
+## GitOps Orchestration (App-of-Apps)
 
-1.  **SafeZone-Free**: This repo contains NO application-specific logic for SafeZone. It is a pure platform layer.
-2.  **Recursive App-of-Apps**: 
-    *   **Layer 0 (Stages)** manages the lifecycle order.
-    *   **Layer 1 (App List)** manages the list of active services.
-    *   **Layer 2 (Resources)** manages the actual K8s resources.
-3.  **Pure Declarative**: The `gitops/` directory contains *only* Kubernetes manifests. No operational scripts are allowed alongside state definitions.
-4.  **Upstream First**: We prioritize using official Helm Charts directly. The `helm-charts/` directory is reserved *only* for charts that require significant structural modification or local wrapping.
+Chorde uses a three-stage synchronization strategy to ensure dependency integrity:
 
-## Workflow
+### Stage 0: Bootstrap
+Focuses on essential services required for the cluster to function and receive traffic.
+- **Security**: `sealed-secrets`
+- **Traffic**: `ingress-public`, `ingress-private`
+- **Automation**: `system-upgrade-controller`, `keda`
 
-### Adding a Platform Service
+### Stage 1: Platform
+Deploys the "Brain" of the cluster, including operators and the observability stack.
+- **Operators**: `cnpg-operator`, `strimzi-operator`
+- **Observability**: `prometheus`, `loki`, `alloy`, `fluent-bit`
+- **Maintenance**: `system-upgrade-plan`
 
-1.  **Define Resources (Layer 2)**:
-    *   Create a directory `gitops/<cluster>/manifests/<service-name>/`.
-    *   Add `values.yaml`, `kustomization.yaml`, or other resources.
-    *   *Reference the official Helm Chart repository in your Application or Chart.yaml.*
+### Stage 2: Components
+Deploys stateful middleware and shared application resources.
+- **Databases**: `cnpg-postgresql` (PostgreSQL), `valkey` (Redis-compatible)
+- **Messaging**: `strimzi-kafka` (Kafka)
+- **Testing**: `echo-server`
 
-2.  **Register Application (Layer 1)**:
-    *   Create an Application manifest in the appropriate stage app list directory (e.g., `gitops/<cluster>/manifests/01-infra/<service-name>.yaml`).
-    *   Point the `source.path` to your new directory from Step 1.
+## Infrastructure (k3han)
 
-    *Note: You do NOT need to modify the Layer 0 (Stages) files.*
+The cluster (codenamed `k3han`) is a hybrid-cloud K3s deployment spanning multiple providers:
+- **Control Plane**: Hosted on a central server (`ct-serv-jp`).
+- **Agents**: Edge nodes (Acer) and Cloud nodes (GCE).
 
-### Managing Secrets
+> [!IMPORTANT]  
+> **Ansible Disclaimer**: Due to the high variability of hardware nodes and the current small cluster scale, the provided Ansible playbooks are primarily used as a **Record of Actions (Documentation)** to track configuration steps. They are NOT intended for fully automated zero-touch provisioning at this stage.
 
-*   Secrets must be encrypted using SealedSecrets.
-*   Generated `sealed-secrets.yaml` files should be placed directly in the service's Layer 2 directory.
+Provisioning reference:
+```bash
+cd cluster/k3han/ansible
+ansible-playbook -i inventory.ini privision.yaml
+```
+
+## Operational Workflows
+
+### Bootstrap the GitOps Controller
+To initialize the entire platform from a fresh K3s install:
+1. Install ArgoCD manually or via `scripts/ops/bootstrap-cluster.sh`.
+2. Apply the root application:
+   ```bash
+   kubectl apply -f gitops/k3han/root.yaml
+   ```
+
+### Secret Management
+Secrets are managed using **Bitnami Sealed Secrets**.
+- Unsealed secrets should **NEVER** be committed.
+- Use `scripts/ops/seal.sh` to encrypt local manifests before committing.
+
+### Validation
+Each component includes automated test scripts in `scripts/test/`.
+Example:
+```bash
+./scripts/test/ingress/ingress-isolation-test.sh
+```
