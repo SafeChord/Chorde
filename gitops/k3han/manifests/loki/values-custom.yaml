@@ -29,6 +29,15 @@ loki:
       bucketnames: amzn-loki-s3-jp
       s3forcepathstyle: false
 
+  ruler:
+    alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
+    enable_api: true
+    storage:
+      type: local
+      local:
+        directory: /var/loki/rules
+    rule_path: /var/loki/rules-temp
+
 
 chunksCache:
   resources:
@@ -72,6 +81,13 @@ resultsCache:
 
 singleBinary:
   replicas: 1
+  extraVolumes:
+    - name: loki-rules
+      configMap:
+        name: loki-alert-rules
+  extraVolumeMounts:
+    - name: loki-rules
+      mountPath: /var/loki/rules/fake
   persistence:
     enabled: true
     storageClass: local-path
