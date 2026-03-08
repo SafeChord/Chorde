@@ -12,6 +12,17 @@ alertmanager:
         - matchers:
             - alertname = "Watchdog"
           receiver: "null"
+        # K3s integrates kube-proxy/scheduler/controller-manager into a single binary
+        # and does not expose their individual metrics endpoints. These alerts will
+        # always fire on K3s clusters and are not actionable.
+        - matchers:
+            - alertname =~ "KubeProxyDown|KubeSchedulerDown|KubeControllerManagerDown"
+          receiver: "null"
+        # TargetDown fired due to K3s built-in components not exposing scrape targets.
+        - matchers:
+            - alertname = "TargetDown"
+            - namespace =~ "kube-system|monitoring"
+          receiver: "null"
     receivers:
       - name: "null"
       - name: slack
