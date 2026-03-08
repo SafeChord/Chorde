@@ -11,6 +11,7 @@ controller:
  
   extraArgs:
     controller-class: "k8s.io/ingress-nginx-public"
+    default-ssl-certificate: "ingress/cloudflare-origin-cert"
 
   hostPort:
     enabled: true
@@ -36,8 +37,8 @@ controller:
 # security settings
   config:
     enable-real-ip: "true"
-    real-ip-header: "X-Forwarded-For"
-    set-real-ip-from: "0.0.0.0/0"
+    real-ip-header: "CF-Connecting-IP"
+    set-real-ip-from: "173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22"
 
     limit-connections: "20"
     limit-rps: "5"
@@ -47,9 +48,8 @@ controller:
     proxy-hide-header: "X-Powered-By"
     hide-headers: "X-Powered-By"
 
-  #   # 全域強制 https 重導向，未來 https 再用
-  #   ssl-redirect: "true"
-  #   force-ssl-redirect: "true"
+    ssl-redirect: "true"
+    force-ssl-redirect: "true"
 
 defaultBackend:
   enabled: false
