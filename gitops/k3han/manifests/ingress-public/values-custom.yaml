@@ -11,7 +11,6 @@ controller:
  
   extraArgs:
     controller-class: "k8s.io/ingress-nginx-public"
-    default-ssl-certificate: "ingress/cloudflare-origin-cert"
 
   hostPort:
     enabled: true

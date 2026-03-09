@@ -8,6 +8,10 @@ metadata:
     nginx.ingress.kubernetes.io/rewrite-target: /
     argocd.argoproj.io/sync-wave: "2"
 spec:
+  tls:
+    - hosts:
+        - "www.omh.idv.tw"
+      secretName: cloudflare-origin-cert
   rules:
     - host: "www.omh.idv.tw"
       http:
