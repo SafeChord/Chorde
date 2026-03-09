@@ -1,0 +1,16 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: echo-basic-auth
+  namespace: testing
+spec:
+  encryptedData:
+    auth: AgCIrk9X2AhqJW1VzY9ntn5rzAXl4VQz5WIHTu5h6biT5S4sVazKQKRk2LKwArxZCAKZkfLWIGTxTBxCB3buam5XPJRQuGkP1IiWDUKdGquSx4xRUfZZ0t0cRkCZEEjrzKHKrsWECPAqY8l5xnMSM8T/uK7s1+7ZJwYZ+Gi4vwWRK4Q3D34XtR/rT0WkxtqZm3X1WU2NyaKUw100DQbxM4wvsXDwxdeTWPYwxglwB/7QpEdBUo3LI7iIEGwny/S5Pn9l3dRfKeTU1WLvggN6Pnhu9bgLa7w+9Lx+K0yazyTdAeEj8acMPiupQnn2XTnlT9n2dBxDB3iYSgdvEm5SR6pTXDToUaoV7tWwWyN4Jt62P+kzyTarB5Oi3Ma2z8AXMFVk24GhkNsL7TXFHvqzfhX+Vp9R9HQ8f1bYbIzt86XR2RAUmnXgduRgB/RnoM5nIuLWmumZT8i5xFgBeqnQonvBtiFuZ2FNZvrerpcOYoNbdepBIpK+nEFWu9YWsbTesXBxj/4SZWRELxmlbGMno0HJFxciKzOIZhlTxTROgQHrMCHEglJ7suKgR22hVOytDwbmC2R1QaeNiVOY4CcAMR7UE5nzkZuOM8YqbDcoG4VgoceiwHbwJ/7cM6+XcfsEvQysX3/li38lZ9sevZ8rKIy0gYBaUNmiK9UJtBztqsD6cvewX9bUKlY0P0HNjBJ60pI32kZZGTQHJ1ARBRdmXLtq+AtDKAj05r7UiRI9uJqrxLrH8FYgU+4nkYOHoG8X
+  template:
+    metadata:
+      annotations:
+        argocd.argoproj.io/sync-wave: "-1"
+      name: echo-basic-auth
+      namespace: testing
+    type: Opaque
