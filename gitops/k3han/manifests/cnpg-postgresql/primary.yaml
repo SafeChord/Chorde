@@ -37,6 +37,8 @@ spec:
       name: postgresql-secret
   
   postgresql:
+    parameters:
+      max_slot_wal_keep_size: "1GB"
     pg_hba:
       # network mask for read replicas 
       - host replication postgres 10.42.0.0/16 scram-sha-256
