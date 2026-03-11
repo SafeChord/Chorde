@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    k3han.io/service: cnpg-operator
+    argocd.argoproj.io/managed-by: application
+spec:
+  project: chorde
+  sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: main
+      ref: chorde-repo
+
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cloudnative-pg
+      targetRevision: 0.27.0
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/manifests/cnpg-operator/values-custom.yaml
+
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: database
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

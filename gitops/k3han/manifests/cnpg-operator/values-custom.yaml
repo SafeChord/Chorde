@@ -1,0 +1,18 @@
+# CloudNativePG Operator Helm Values
+# Ref: https://github.com/cloudnative-pg/charts/blob/main/charts/cloudnative-pg/values.yaml
+
+# Pin operator to control-plane (ct-serv-jp)
+# Mirrors strimzi-operator placement — operators belong to control plane,
+# keeping API server communication local (< 1ms vs ~80ms cross-region).
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+
+tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
