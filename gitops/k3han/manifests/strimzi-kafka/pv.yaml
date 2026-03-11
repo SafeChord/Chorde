@@ -2,6 +2,8 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: acer-nfs-5g-2
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   capacity:
     storage: 5Gi

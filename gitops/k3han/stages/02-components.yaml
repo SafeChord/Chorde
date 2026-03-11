@@ -13,8 +13,8 @@ spec:
             wave: "1"
           - service: cnpg-postgresql
             wave: "1"
-          # - service: strimzi-kafka
-          #   wave: "1"
+          - service: strimzi-kafka
+            wave: "1"
           - service: valkey
             wave: "1"
   template:
