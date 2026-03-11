@@ -12,7 +12,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: local-path 
   local:
-    path: /mnt/k3han-pv/postgredb
+    path: /mnt/k3han-pv/postgresql
   nodeAffinity:
     required:
       nodeSelectorTerms:
