@@ -23,5 +23,8 @@ spec:
       default.replication.factor: "1"
       min.insync.replicas: "1"
   entityOperator:
-    topicOperator: {}
+    topicOperator:
+      watchedNamespaces:
+        - kafka
+        - safezone-preview
     userOperator: {}
