@@ -115,7 +115,8 @@ kube-state-metrics:
 # Prometheus on ct-serv-jp can reach agent nodes across the mesh.
 kubelet:
   serviceMonitor:
-    relabelings:
+    # /metrics endpoint
+    relabelings: &tailscale-relabel
       # acer-agent: 192.168.0.2 → 100.64.1.21
       - sourceLabels: [__address__]
         regex: '192\.168\.0\.2:(.*)'
@@ -126,6 +127,10 @@ kubelet:
         regex: '10\.140\.0\.5:(.*)'
         targetLabel: __address__
         replacement: '100.64.2.21:$1'
+    # /metrics/cadvisor endpoint
+    cAdvisorRelabelings: *tailscale-relabel
+    # /metrics/probes endpoint
+    probesRelabelings: *tailscale-relabel
 
 prometheus-node-exporter:
   # to aviod node exporter mount the root directory on machines
