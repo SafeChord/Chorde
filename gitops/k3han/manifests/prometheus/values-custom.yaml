@@ -111,6 +111,22 @@ kube-state-metrics:
       operator: Exists
       effect: NoSchedule
 
+# Rewrite kubelet scrape targets to use Tailscale IPs (EXTERNAL-IP) so
+# Prometheus on ct-serv-jp can reach agent nodes across the mesh.
+kubelet:
+  serviceMonitor:
+    relabelings:
+      # acer-agent: 192.168.0.2 → 100.64.1.21
+      - sourceLabels: [__address__]
+        regex: '192\.168\.0\.2:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.1.21:$1'
+      # gce-agent-tw: 10.140.0.5 → 100.64.2.21
+      - sourceLabels: [__address__]
+        regex: '10\.140\.0\.5:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.2.21:$1'
+
 prometheus-node-exporter:
   # to aviod node exporter mount the root directory on machines
   hostRootFsMount:
