@@ -26,14 +26,6 @@ spec:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring
 
-  ignoreDifferences:
-    - group: monitoring.coreos.com
-      kind: ServiceMonitor
-      name: kube-prometheus-stack-kubelet
-      namespace: monitoring
-      jqPathExpressions:
-        - .spec.endpoints[].relabelings
-
   syncPolicy:
     automated:
       prune: true
