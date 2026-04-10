@@ -128,9 +128,29 @@ kubelet:
         targetLabel: __address__
         replacement: '100.64.2.21:$1'
     # /metrics/cadvisor endpoint
-    cAdvisorRelabelings: *tailscale-relabel
+    cAdvisorRelabelings:
+      - sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
+      - sourceLabels: [__address__]
+        regex: '192\.168\.0\.2:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.1.21:$1'
+      - sourceLabels: [__address__]
+        regex: '10\.140\.0\.5:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.2.21:$1'
     # /metrics/probes endpoint
-    probesRelabelings: *tailscale-relabel
+    probesRelabelings:
+      - sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
+      - sourceLabels: [__address__]
+        regex: '192\.168\.0\.2:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.1.21:$1'
+      - sourceLabels: [__address__]
+        regex: '10\.140\.0\.5:(.*)'
+        targetLabel: __address__
+        replacement: '100.64.2.21:$1'
 
 prometheus-node-exporter:
   # to aviod node exporter mount the root directory on machines
