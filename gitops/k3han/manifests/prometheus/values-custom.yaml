@@ -65,7 +65,8 @@ grafana:
     passwordKey: admin-password
 
   ingress:
-    enabled: true
+    # Disabled: grafana is served by the NGF HTTPRoute now (Chorde #4 migration).
+    enabled: false
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"

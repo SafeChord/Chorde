@@ -17,8 +17,8 @@ spec:
             wave: "1"
           - service: ingress-public
             wave: "2"
-          - service: ingress-private
-            wave: "2"
+          # ingress-private decommissioned (Chorde #4): replaced by the NGF private
+          # path below. argocd/grafana now served via HTTPRoute, not nginx-private.
           # Gateway API / NGF private path (replaces ingress-private after soak).
           # Ordered: CRDs (3) → controller + tunnel (4) → Gateway & routes (5).
           - service: gateway-api-crds

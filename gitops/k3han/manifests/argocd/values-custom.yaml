@@ -106,11 +106,12 @@ server:
       effect: NoSchedule
       
   ingress:
-    enabled: true
+    # Disabled: argocd is served by the NGF HTTPRoute now (Chorde #4 migration).
+    enabled: false
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "false" 
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
     ingressClassName: "nginx-private"
     hostname: k3han.omh.idv.tw
     path: /argocd
