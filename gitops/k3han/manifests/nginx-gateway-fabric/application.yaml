@@ -21,6 +21,12 @@ spec:
       chart: nginx-gateway-fabric
       targetRevision: 2.6.3
       helm:
+        # MUST match the release name of the original `helm install` (`ngf`).
+        # ArgoCD's Helm release name defaults to the Application name; leaving it
+        # as `nginx-gateway-fabric` renders a SECOND, parallel NGF install whose
+        # control plane fights the original over GatewayClass `nginx` and breaks
+        # the data-plane Service endpoints. Pinning to `ngf` adopts in place.
+        releaseName: ngf
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/nginx-gateway-fabric/values-custom.yaml
 
