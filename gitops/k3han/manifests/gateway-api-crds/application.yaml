@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway-api-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    k3han.io/service: gateway-api-crds
+    argocd.argoproj.io/managed-by: application
+spec:
+  project: chorde
+  # Gateway API standard-channel CRDs, vendored by NGF so the version matches the
+  # controller exactly (NGF 2.6.3 → Gateway API 1.5 standard). NGF's Helm chart does
+  # NOT ship these — they must be installed out-of-band, hence a dedicated app.
+  source:
+    repoURL: https://github.com/nginx/nginx-gateway-fabric
+    targetRevision: v2.6.3
+    path: config/crd/gateway-api/standard
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: kube-system  # ignored — CRDs are cluster-scoped; ns only satisfies the schema
+  syncPolicy:
+    automated:
+      # prune is deliberately FALSE: pruning a CRD cascade-deletes every Gateway /
+      # HTTPRoute in the cluster. CRD removal must be a manual, intentional act.
+      prune: false
+      selfHeal: true
+    syncOptions:
+      # Gateway API CRD schemas exceed the 262KB client-side last-applied annotation
+      # limit — server-side apply is mandatory.
+      - ServerSideApply=true

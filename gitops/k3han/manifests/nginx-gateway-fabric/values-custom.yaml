@@ -1,0 +1,12 @@
+# NGINX Gateway Fabric — control-plane (nginxGateway) customizations only.
+# Data-plane placement (ct-serv-jp pin) AND data-plane resource limits live in the
+# per-Gateway NginxProxy CR (manifests/private-gateway/gateway.yaml), not here.
+nginxGateway:
+  # The control plane only watches the K8s API and renders nginx config — it is
+  # lightweight and not on the request hot path, so it can stay modest.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi

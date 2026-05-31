@@ -19,6 +19,16 @@ spec:
             wave: "2"
           - service: ingress-private
             wave: "2"
+          # Gateway API / NGF private path (replaces ingress-private after soak).
+          # Ordered: CRDs (3) → controller + tunnel (4) → Gateway & routes (5).
+          - service: gateway-api-crds
+            wave: "3"
+          - service: nginx-gateway-fabric
+            wave: "4"
+          - service: cloudflared
+            wave: "4"
+          - service: private-gateway
+            wave: "5"
   template:
     metadata:
       name: 'bootstrap-{{service}}'

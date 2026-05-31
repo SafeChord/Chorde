@@ -1,0 +1,53 @@
+# Private gateway data-plane config + the Gateway itself.
+# NginxProxy: per-Gateway data-plane settings. Private = ClusterIP, pinned to
+# ct-serv-jp (co-located with argocd/grafana + in-cluster cloudflared → all-JP path).
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: private-proxy
+  namespace: nginx-gateway
+spec:
+  kubernetes:
+    service:
+      type: ClusterIP
+    deployment:
+      replicas: 1
+      container:
+        # Default NGF install sets NO data-plane limits. Bound it before the
+        # public/edge phase (memory limit only — CPU limit omitted to avoid
+        # throttling the request path).
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            memory: 192Mi
+      pod:
+        nodeSelector:
+          kubernetes.io/hostname: ct-serv-jp
+        # ct-serv-jp is the k3s control-plane (tainted NoSchedule); argocd/grafana
+        # tolerate it the same way. Required to co-locate the private data plane in JP.
+        tolerations:
+          - key: node-role.kubernetes.io/control-plane
+            effect: NoSchedule
+            operator: Exists
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: private-gateway
+  namespace: nginx-gateway
+spec:
+  gatewayClassName: nginx
+  infrastructure:
+    parametersRef:
+      group: gateway.nginx.org
+      kind: NginxProxy
+      name: private-proxy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
