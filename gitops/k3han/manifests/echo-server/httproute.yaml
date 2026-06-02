@@ -29,6 +29,14 @@ spec:
             group: gateway.nginx.org
             kind: AuthenticationFilter
             name: echo-basic-auth
+        # Strip the backend framework header (parity with old nginx
+        # hide-headers: X-Powered-By). traefik/whoami doesn't emit it, so this is
+        # functionally inert here — kept as a showcase of the native Gateway API
+        # ResponseHeaderModifier (no SnippetsFilter needed for header hygiene).
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            remove:
+              - X-Powered-By
         # Mirrors the old nginx rewrite-target:/ — strip the /echo prefix so the
         # backend (traefik/whoami) sees "/".
         - type: URLRewrite
