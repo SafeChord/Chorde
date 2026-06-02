@@ -1,0 +1,14 @@
+# Basic-auth gate for the echo route (replaces ingress-nginx auth-* annotations).
+# Referenced from httproute.yaml via filters[].extensionRef. The secretRef target
+# (echo-htpasswd) must live in this same ns — NGF requires it.
+apiVersion: gateway.nginx.org/v1alpha1
+kind: AuthenticationFilter
+metadata:
+  name: echo-basic-auth
+  namespace: testing
+spec:
+  type: Basic
+  basic:
+    realm: "Authentication Required"
+    secretRef:
+      name: echo-htpasswd

@@ -1,0 +1,73 @@
+# Public gateway data-plane config + the Gateway itself.
+# NginxProxy: the edge data plane. Pinned to gce-agent-tw (the only node labeled
+# chorde.io/purpose=proxy-only) and bound to the host's 80/443 via hostPorts, so
+# it serves public traffic exactly where ingress-public used to. Reuses the
+# EXISTING control plane on ct-serv-jp (1 brain, 2 data planes: private + public).
+# No resource limits yet — observe real usage on the 1GB edge first, constrain
+# later (not prod; fail-then-tune). Service stays ClusterIP (hostPort is the
+# ingress path; the Service is only for in-cluster/test reachability).
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: public-proxy
+  namespace: nginx-gateway
+spec:
+  kubernetes:
+    service:
+      type: ClusterIP
+    deployment:
+      replicas: 1
+      container:
+        hostPorts:
+          - port: 80
+            containerPort: 80
+          - port: 443
+            containerPort: 443
+      pod:
+        nodeSelector:
+          chorde.io/purpose: proxy-only
+        # gce-agent-tw carries the taint chorde.io/purpose=proxy-only:NoSchedule
+        # (same pattern ingress-public tolerated). Required to land on the edge.
+        tolerations:
+          - key: chorde.io/purpose
+            operator: Equal
+            value: proxy-only
+            effect: NoSchedule
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: nginx-gateway
+spec:
+  gatewayClassName: nginx
+  infrastructure:
+    parametersRef:
+      group: gateway.nginx.org
+      kind: NginxProxy
+      name: public-proxy
+  listeners:
+    # Plain HTTP — exists only to 301-redirect to HTTPS (see echo-server's
+    # httproute-redirect.yaml). No app is served in the clear.
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: "*.omh.idv.tw"
+      allowedRoutes:
+        namespaces:
+          from: All
+    # HTTPS — terminates TLS with the wildcard CF Origin cert. The cert lives in
+    # this same ns (nginx-gateway) → no ReferenceGrant. One wildcard cert covers
+    # every *.omh.idv.tw host; routes pin their own hostname.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.omh.idv.tw"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: cloudflare-origin-cert
+      allowedRoutes:
+        namespaces:
+          from: All

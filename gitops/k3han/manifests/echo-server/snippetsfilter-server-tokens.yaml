@@ -1,0 +1,12 @@
+# server_tokens off — hides the nginx version in the Server header and error
+# pages (parity with ingress-public's server-tokens:"false"). Native nginx, the
+# only directive here. Referenced from httproute.yaml via filters[].extensionRef.
+apiVersion: gateway.nginx.org/v1alpha1
+kind: SnippetsFilter
+metadata:
+  name: echo-server-tokens
+  namespace: testing
+spec:
+  snippets:
+    - context: http.server
+      value: server_tokens off;

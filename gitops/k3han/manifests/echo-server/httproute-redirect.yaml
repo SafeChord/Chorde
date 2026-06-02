@@ -1,0 +1,21 @@
+# HTTP→HTTPS redirect. Attaches to public-gateway's plain HTTP listener and
+# 301s everything for www.omh.idv.tw to https. Replaces ingress-nginx's
+# ssl-redirect/force-ssl-redirect. No backend — RequestRedirect terminates here.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: echo-https-redirect
+  namespace: testing
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: nginx-gateway
+      sectionName: http
+  hostnames:
+    - www.omh.idv.tw
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

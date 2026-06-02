@@ -15,12 +15,10 @@ spec:
             wave: "1"
           - service: keda
             wave: "1"
-          - service: ingress-public
-            wave: "2"
-          # ingress-private decommissioned (Chorde #4): replaced by the NGF private
-          # path below. argocd/grafana now served via HTTPRoute, not nginx-private.
-          # Gateway API / NGF private path (replaces ingress-private after soak).
-          # Ordered: CRDs (3) → controller + tunnel (4) → Gateway & routes (5).
+          # ingress-public + ingress-private both decommissioned (Chorde #4):
+          # replaced by the NGF private+public paths below. argocd/grafana via the
+          # private Gateway; echo via the public Gateway. nginx-ingress is gone.
+          # Ordered: CRDs (3) → controller + tunnel (4) → Gateways & routes (5).
           - service: gateway-api-crds
             wave: "3"
           - service: nginx-gateway-fabric
@@ -28,6 +26,8 @@ spec:
           - service: cloudflared
             wave: "4"
           - service: private-gateway
+            wave: "5"
+          - service: public-gateway
             wave: "5"
   template:
     metadata:
