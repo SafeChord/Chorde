@@ -1,0 +1,25 @@
+# Per-client-IP request cap for echo (parity with old nginx-public limit-rps:5;
+# limit_conn has no native NGF equivalent and is dropped — CF + this cover it).
+# Purpose here is node SELF-PROTECTION (the edge is a 1GB box), not attack
+# defence — Cloudflare owns DDoS/WAF/edge rate limiting upstream. Keys on
+# $binary_remote_addr, which reflects the REAL client IP thanks to the public
+# NginxProxy's rewriteClientIP (else it would key on CF edge IPs = useless).
+# 5r/s + burst 10 is far above any human probe usage; excess gets 429.
+apiVersion: gateway.nginx.org/v1alpha1
+kind: RateLimitPolicy
+metadata:
+  name: echo-rate-limit
+  namespace: testing
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: echo
+  rateLimit:
+    local:
+      rules:
+        - key: "$binary_remote_addr"
+          rate: 5r/s
+          burst: 10
+          noDelay: true
+          zoneSize: 10m

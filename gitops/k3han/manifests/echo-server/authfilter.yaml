@@ -11,4 +11,4 @@ spec:
   basic:
     realm: "Authentication Required"
     secretRef:
-      name: echo-htpasswd
+      name: echo-auth
