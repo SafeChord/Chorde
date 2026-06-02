@@ -16,6 +16,9 @@ spec:
       kind: HTTPRoute
       name: echo
   rateLimit:
+    # nginx limit_req defaults to 503; 429 (Too Many Requests) is the correct
+    # semantic for rate limiting — tells clients to back off, not "server down".
+    rejectCode: 429
     local:
       rules:
         - key: "$binary_remote_addr"
