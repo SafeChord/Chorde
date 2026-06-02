@@ -1,8 +1,11 @@
 # echo public route. Lives in the testing ns → same-ns backendRef + same-ns
-# AuthenticationFilter/SnippetsFilter secret refs (no ReferenceGrant). Attaches
-# cross-ns to public-gateway's HTTPS listener. Replaces the nginx-public Ingress.
-# Filter order matters (applied in sequence): auth gate → strip /echo prefix →
-# backend. server_tokens snippet is server-context (placement-agnostic).
+# AuthenticationFilter (no ReferenceGrant). Attaches cross-ns to public-gateway's
+# HTTPS listener. Replaces the nginx-public Ingress.
+# Filter order (applied in sequence): auth gate → strip /echo prefix → backend.
+# NOTE: server_tokens off (a SnippetsFilter) is DEFERRED with the real-ip +
+# rate-limit pair — enabling NGF's SnippetsFilters feature (raw-nginx injection)
+# for a single directive isn't worth the surface; do it once, later, alongside
+# real-ip (also a SnippetsFilter). This route stays native Gateway API only.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -21,11 +24,6 @@ spec:
             type: PathPrefix
             value: /echo
       filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.nginx.org
-            kind: SnippetsFilter
-            name: echo-server-tokens
         - type: ExtensionRef
           extensionRef:
             group: gateway.nginx.org
