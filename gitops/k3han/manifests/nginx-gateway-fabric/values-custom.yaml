@@ -1,6 +1,6 @@
-# NGINX Gateway Fabric — control-plane (nginxGateway) customizations only.
-# Data-plane placement (ct-serv-jp pin) AND data-plane resource limits live in the
-# per-Gateway NginxProxy CR (manifests/private-gateway/gateway.yaml), not here.
+# NGINX Gateway Fabric — control-plane (nginxGateway) customizations.
+# Data-plane placement + resource limits live in the per-Gateway NginxProxy CR
+# (manifests/private-gateway/gateway.yaml), not here.
 nginxGateway:
   # The control plane only watches the K8s API and renders nginx config — it is
   # lightweight and not on the request hot path, so it can stay modest.
@@ -10,3 +10,14 @@ nginxGateway:
       memory: 64Mi
     limits:
       memory: 128Mi
+  # Pin to the JP cloud Control Center. The control plane is a critical control-
+  # plane service; per the K3han MVA topology it must NOT float onto the home-lab
+  # node (acer-agent — may go offline) nor the 1GB edge (gce-agent-tw). Left
+  # unpinned it landed on acer-agent and could reschedule onto the edge.
+  # ct-serv-jp is tainted control-plane:NoSchedule, hence the toleration.
+  nodeSelector:
+    kubernetes.io/hostname: ct-serv-jp
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      effect: NoSchedule
+      operator: Exists
