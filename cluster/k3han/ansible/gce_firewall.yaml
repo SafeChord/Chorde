@@ -1,5 +1,5 @@
 ---
-# GCP Firewall Hardening: Restrict ingress-public origin to Cloudflare IPs only
+# GCP Firewall Hardening: Restrict cf-edge origin to Cloudflare IPs only
 #
 # Problem: gce-agent-tw HostPort 80/443 is exposed to the public internet.
 #          Without this rule, attackers can bypass Cloudflare (DDoS protection,
@@ -13,20 +13,20 @@
 #
 # Author: bradyhau
 # Project: SafeChord / Chorde / K3han
-# Status: Applied (2026-03-08 via gcloud CLI)
+# Status: Applied (2026-03-08; rule/tag renamed 2026-06-04 via gcloud CLI)
 # Applied changes:
-#   - Removed tag 'http-server' from gce-agent-tw (disables default-allow-http 0.0.0.0/0)
-#   - Added tag 'ingress-public' to gce-agent-tw
-#   - Created firewall rule 'allow-cloudflare-http' (tcp:80, CF IPs only)
+#   - Removed tags 'http-server'/'https-server' from gce-agent-tw (disables default-allow 0.0.0.0/0)
+#   - Tagged gce-agent-tw 'cf-edge' (was 'ingress-public'; renamed post ingress-nginx -> NGF migration)
+#   - Created firewall rule 'allow-cloudflare-edge' (tcp:80,443, CF IPs only; was 'allow-cloudflare-http')
 
-- name: Harden GCE ingress-public firewall (Cloudflare IP allowlist)
+- name: Harden GCE cf-edge firewall (Cloudflare IP allowlist)
   hosts: localhost
   gather_facts: false
 
   vars:
     gcp_project: "k3han-452908"
-    firewall_rule_name: "allow-cloudflare-http"
-    target_tag: "ingress-public"  # Applied to gce-agent-tw (asia-east1-a)
+    firewall_rule_name: "allow-cloudflare-edge"
+    target_tag: "cf-edge"  # Applied to gce-agent-tw (asia-east1-a)
 
     # Cloudflare IPv4 ranges (https://www.cloudflare.com/ips-v4)
     cloudflare_ipv4:
@@ -71,13 +71,13 @@
 
 # Manual GCP Console equivalent (for reference):
 # VPC Network → Firewall → Create Rule
-#   Name:          allow-cloudflare-http-https
+#   Name:          allow-cloudflare-edge
 #   Direction:     Ingress
 #   Action:        Allow
-#   Targets:       Specified target tags → ingress-public
+#   Targets:       Specified target tags → cf-edge
 #   Source filter: IPv4 ranges → (paste cloudflare_ipv4 above, comma-separated)
 #   Protocols:     TCP 80, 443
 #   Priority:      1000
 #
-# IMPORTANT: After applying, verify gce-agent-tw has network tag "ingress-public"
+# IMPORTANT: After applying, verify gce-agent-tw has network tag "cf-edge"
 # in GCP Console → Compute Engine → VM instances → gce-agent-tw → Network tags
