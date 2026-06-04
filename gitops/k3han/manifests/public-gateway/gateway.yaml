@@ -49,6 +49,16 @@ spec:
             containerPort: 80
           - port: 443
             containerPort: 443
+        # Guardrail only (not capacity) — low-traffic portfolio project, edge is a
+        # 1GB node, steady state ~43Mi. The limit caps a runaway from OOMing the
+        # shared edge. Memory limit only (no CPU limit → no request-path throttle).
+        # Mirrors private-proxy (one mental model across both data planes).
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            memory: 256Mi
       pod:
         nodeSelector:
           chorde.io/purpose: proxy-only

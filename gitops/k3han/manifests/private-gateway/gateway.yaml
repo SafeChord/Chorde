@@ -13,15 +13,16 @@ spec:
     deployment:
       replicas: 1
       container:
-        # Default NGF install sets NO data-plane limits. Bound it before the
-        # public/edge phase (memory limit only — CPU limit omitted to avoid
-        # throttling the request path).
+        # Generous guardrail, not capacity planning — this is a low-traffic
+        # portfolio project (steady state ~43Mi). The limit just caps a runaway
+        # from OOMing the shared node. Memory limit only — CPU limit omitted to
+        # avoid throttling the request path. Mirrors public-proxy (one model).
         resources:
           requests:
-            cpu: 50m
-            memory: 96Mi
+            cpu: 100m
+            memory: 100Mi
           limits:
-            memory: 192Mi
+            memory: 256Mi
       pod:
         nodeSelector:
           kubernetes.io/hostname: ct-serv-jp
