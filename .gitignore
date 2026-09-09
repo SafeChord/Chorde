@@ -10,3 +10,8 @@ secrets/
 unsealed-*
 
 values.yaml
+
+bin/trivy
+# CVE scan artifacts (regenerated per run, see #9)
+scripts/infra_sbom_targets.json
+scripts/infra_cve_results.json
