@@ -6,7 +6,7 @@ set -euo pipefail
 #          HTTPRoutes are resolved, all routes are reachable in-cluster, and the
 #          in-cluster cloudflared tunnel pod (the component the cutover added) is
 #          healthy. (The external chain incl. CF Access/OAuth needs a browser.)
-# Usage: bash scripts/test/ngf/connectivity-test.sh
+# Usage: bash scripts/test/ngf/connectivity-test-private.sh
 
 # ---------------------------------------------------------------------------
 # Colors & log helpers (match repo convention)
