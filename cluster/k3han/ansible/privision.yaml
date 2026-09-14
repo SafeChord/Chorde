@@ -8,6 +8,21 @@
     k3s_server_ip: "<CT-SERV-JP_VPN_IP>"            # Example: 100.100.x.x
     k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
 
+    # The single source for the sysctl invariants. Both drop-in bodies, the
+    # read-back argument list and the assert's expected values all derive from
+    # this map, so they cannot drift apart. The command is generated from the
+    # same insertion-ordered map as the expected values, so reordering a key
+    # cannot silently make the assert compare the wrong pairs either. Chorde#10.
+    #
+    # Order here is the order the read-back reports; keep the two files' keys
+    # grouped so the map reads as the union of what they write.
+    k3s_sysctl_invariants:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 2
+      net.ipv4.conf.default.rp_filter: 2
+      fs.inotify.max_user_instances: 8192
+      fs.inotify.max_user_watches: 524288
+
   tasks:
     # --- Node sysctl baseline ------------------------------------------------
     # Runs first, before Tailscale and k3s: k3s needs the inotify headroom from
@@ -41,8 +56,8 @@
           #
           # This is NOT the fd rlimit. That is 1048576 and irrelevant here; the
           # two only share the "Too many open files" string.
-          fs.inotify.max_user_instances = 8192
-          fs.inotify.max_user_watches = 524288
+          fs.inotify.max_user_instances = {{ k3s_sysctl_invariants['fs.inotify.max_user_instances'] }}
+          fs.inotify.max_user_watches = {{ k3s_sysctl_invariants['fs.inotify.max_user_watches'] }}
       tags: sysctl
 
     - name: Assert k3s network invariants over the image baseline
@@ -73,9 +88,9 @@
           # ordinary steady state on a node running flannel VXLAN alongside
           # Tailscale policy routing. Enumerating interfaces here is not
           # possible anyway -- veth* are created and destroyed continuously.
-          net.ipv4.ip_forward = 1
-          net.ipv4.conf.all.rp_filter = 2
-          net.ipv4.conf.default.rp_filter = 2
+          net.ipv4.ip_forward = {{ k3s_sysctl_invariants['net.ipv4.ip_forward'] }}
+          net.ipv4.conf.all.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.all.rp_filter'] }}
+          net.ipv4.conf.default.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.default.rp_filter'] }}
       tags: sysctl
 
     - name: Apply sysctl drop-ins
@@ -84,12 +99,7 @@
       tags: sysctl
 
     - name: Read the invariants back after the reload
-      command: >-
-        sysctl -n
-        net.ipv4.ip_forward
-        net.ipv4.conf.all.rp_filter
-        net.ipv4.conf.default.rp_filter
-        fs.inotify.max_user_instances
+      command: "sysctl -n {{ k3s_sysctl_invariants.keys() | list | join(' ') }}"
       register: k3s_sysctl_effective
       changed_when: false
       tags: sysctl
@@ -97,10 +107,12 @@
     - name: Fail if a drop-in lost the merge
       assert:
         that:
-          - k3s_sysctl_effective.stdout_lines == ['1', '2', '2', '8192']
+          - k3s_sysctl_effective.stdout_lines == (k3s_sysctl_invariants.values() | map('string') | list)
         fail_msg: >-
-          sysctl.d did not merge to the k3s invariants: got
-          {{ k3s_sysctl_effective.stdout_lines }}, expected ['1', '2', '2', '8192'].
+          sysctl.d did not merge to the k3s invariants. For
+          {{ k3s_sysctl_invariants.keys() | list }} expected
+          {{ k3s_sysctl_invariants.values() | list }}, got
+          {{ k3s_sysctl_effective.stdout_lines }}.
           Either a drop-in is missing, or something in /etc/sysctl.d sorts after
           99-k3s-*.conf and overrode it. Writing the file is not evidence that
           it won -- that confusion is the root cause of SafeZone#63.
