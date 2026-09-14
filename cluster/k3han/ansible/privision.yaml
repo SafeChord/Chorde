@@ -5,10 +5,107 @@
 
   vars:
     tailscale_authkey: "<YOUR_TAILSCALE_AUTHKEY>"   # Optional: Tailscale authkey if needed
-    k3s_server_ip: "<HZ-SERV-SIN_VPN_IP>"            # Example: 100.100.x.x
+    k3s_server_ip: "<CT-SERV-JP_VPN_IP>"            # Example: 100.100.x.x
     k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
 
   tasks:
+    # --- Node sysctl baseline ------------------------------------------------
+    # Runs first, before Tailscale and k3s: k3s needs the inotify headroom from
+    # the moment it starts, and Tailscale subnet routing plus every k3s Service
+    # depend on ip_forward being 1.
+    #
+    # ORDER IS LOAD-BEARING. Both drop-ins are written BEFORE `sysctl --system`,
+    # never after. The reload re-applies every file in the sysctl.d search path
+    # in lexical order, so on a node still carrying a vendor baseline that
+    # declares ip_forward=0 -- the GCE image ships exactly that in
+    # 60-gce-network-security.conf -- reloading first re-asserts 0 and takes
+    # that node's ingress down until the override lands. That is how SafeZone#63
+    # happened: an inotify reload on a node whose disk and runtime had disagreed
+    # about ip_forward for 492 days. Chorde#10.
+
+    - name: Raise inotify quotas for k3s
+      copy:
+        dest: /etc/sysctl.d/99-k3s-inotify.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # k3s runs every component as uid 0, and fs.inotify.max_user_instances
+          # is a per-uid quota. The stock 128 saturates roughly 13 minutes after
+          # boot on a control plane carrying ~31 pods: k3s-server alone holds
+          # ~42 instances, each containerd-shim 3-4. Once saturated,
+          # inotify_init() returns EMFILE for every uid-0 caller -- including
+          # PID 1, which then loses mount-table tracking, cannot restart
+          # journald, and wedges the node while it stays up and reachable, so
+          # nothing alerts. Chorde#10.
+          #
+          # This is NOT the fd rlimit. That is 1048576 and irrelevant here; the
+          # two only share the "Too many open files" string.
+          fs.inotify.max_user_instances = 8192
+          fs.inotify.max_user_watches = 524288
+      tags: sysctl
+
+    - name: Assert k3s network invariants over the image baseline
+      copy:
+        dest: /etc/sysctl.d/99-k3s-network.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Sorts after any vendor baseline in /etc/sysctl.d. Last write wins,
+          # and filename order is the only arbitration mechanism sysctl.d has --
+          # there is no notion of priority. Do not renumber below 60-.
+          #
+          # ip_forward: every Service and hostPort is a DNAT. The packet is
+          # rewritten to a pod IP and is then no longer addressed to the host,
+          # so it must be forwarded. At 0 the SYN is accepted, rewritten, then
+          # dropped with no RST -- the client sees a timeout (Cloudflare 522,
+          # not 521), while ICMP to the same host keeps answering because local
+          # delivery needs no forwarding. `ping` works while TCP times out is
+          # the fingerprint. k3s sets this to 1 at startup, so a node can
+          # disagree with its own disk indefinitely without symptom, until
+          # something runs `sysctl --system`.
+          #
+          # rp_filter: loose (2), not strict (1). The effective value is
+          # max(conf.all, conf.<iface>), so conf.all decides and no
+          # per-interface setting can relax it. Strict mode drops any packet
+          # whose source would route back out a different interface, which is
+          # ordinary steady state on a node running flannel VXLAN alongside
+          # Tailscale policy routing. Enumerating interfaces here is not
+          # possible anyway -- veth* are created and destroyed continuously.
+          net.ipv4.ip_forward = 1
+          net.ipv4.conf.all.rp_filter = 2
+          net.ipv4.conf.default.rp_filter = 2
+      tags: sysctl
+
+    - name: Apply sysctl drop-ins
+      command: sysctl --system
+      changed_when: false
+      tags: sysctl
+
+    - name: Read the invariants back after the reload
+      command: >-
+        sysctl -n
+        net.ipv4.ip_forward
+        net.ipv4.conf.all.rp_filter
+        net.ipv4.conf.default.rp_filter
+        fs.inotify.max_user_instances
+      register: k3s_sysctl_effective
+      changed_when: false
+      tags: sysctl
+
+    - name: Fail if a drop-in lost the merge
+      assert:
+        that:
+          - k3s_sysctl_effective.stdout_lines == ['1', '2', '2', '8192']
+        fail_msg: >-
+          sysctl.d did not merge to the k3s invariants: got
+          {{ k3s_sysctl_effective.stdout_lines }}, expected ['1', '2', '2', '8192'].
+          Either a drop-in is missing, or something in /etc/sysctl.d sorts after
+          99-k3s-*.conf and overrode it. Writing the file is not evidence that
+          it won -- that confusion is the root cause of SafeZone#63.
+      tags: sysctl
+
     - name: Install Tailscale
       apt:
         name: tailscale
