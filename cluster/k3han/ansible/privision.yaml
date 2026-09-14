@@ -5,10 +5,139 @@
 
   vars:
     tailscale_authkey: "<YOUR_TAILSCALE_AUTHKEY>"   # Optional: Tailscale authkey if needed
-    k3s_server_ip: "<HZ-SERV-SIN_VPN_IP>"            # Example: 100.100.x.x
+    k3s_server_ip: "<CT-SERV-JP_VPN_IP>"            # Example: 100.100.x.x
     k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
 
+    # The single source for the sysctl invariants. Both drop-in bodies, the
+    # read-back argument list and the assert's expected values all derive from
+    # this map, so they cannot drift apart. The command is generated from the
+    # same insertion-ordered map as the expected values, so reordering a key
+    # cannot silently make the assert compare the wrong pairs either. Chorde#10.
+    #
+    # Order here is the order the read-back reports; keep the two files' keys
+    # grouped so the map reads as the union of what they write.
+    k3s_sysctl_invariants:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 2
+      net.ipv4.conf.default.rp_filter: 2
+      fs.inotify.max_user_instances: 8192
+      fs.inotify.max_user_watches: 524288
+
   tasks:
+    # --- Node sysctl baseline ------------------------------------------------
+    # Runs first, before Tailscale and k3s: k3s needs the inotify headroom from
+    # the moment it starts, and Tailscale subnet routing plus every k3s Service
+    # depend on ip_forward being 1.
+    #
+    # ORDER IS LOAD-BEARING. Both drop-ins are written BEFORE `sysctl --system`,
+    # never after. The reload re-applies every file in the sysctl.d search path
+    # in lexical order, so on a node still carrying a vendor baseline that
+    # declares ip_forward=0 -- the GCE image ships exactly that in
+    # 60-gce-network-security.conf -- reloading first re-asserts 0 and takes
+    # that node's ingress down until the override lands. That is how SafeZone#63
+    # happened: an inotify reload on a node whose disk and runtime had disagreed
+    # about ip_forward for 492 days. Chorde#10.
+
+    - name: Raise inotify quotas for k3s
+      copy:
+        dest: /etc/sysctl.d/99-k3s-inotify.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # k3s runs every component as uid 0, and fs.inotify.max_user_instances
+          # is a per-uid quota. The stock 128 saturates roughly 13 minutes after
+          # boot on a control plane carrying ~31 pods: k3s-server alone holds
+          # ~42 instances, each containerd-shim 3-4. Once saturated,
+          # inotify_init() returns EMFILE for every uid-0 caller -- including
+          # PID 1, which then loses mount-table tracking, cannot restart
+          # journald, and wedges the node while it stays up and reachable, so
+          # nothing alerts. Chorde#10.
+          #
+          # This is NOT the fd rlimit. That is 1048576 and irrelevant here; the
+          # two only share the "Too many open files" string.
+          fs.inotify.max_user_instances = {{ k3s_sysctl_invariants['fs.inotify.max_user_instances'] }}
+          fs.inotify.max_user_watches = {{ k3s_sysctl_invariants['fs.inotify.max_user_watches'] }}
+      tags: sysctl
+
+    - name: Assert k3s network invariants over the image baseline
+      copy:
+        dest: /etc/sysctl.d/99-k3s-network.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Sorts after any vendor baseline in /etc/sysctl.d. Last write wins,
+          # and filename order is the only arbitration mechanism sysctl.d has --
+          # there is no notion of priority. Do not renumber below 60-.
+          #
+          # ip_forward: every Service and hostPort is a DNAT. The packet is
+          # rewritten to a pod IP and is then no longer addressed to the host,
+          # so it must be forwarded. At 0 the SYN is accepted, rewritten, then
+          # dropped with no RST -- the client sees a timeout (Cloudflare 522,
+          # not 521), while ICMP to the same host keeps answering because local
+          # delivery needs no forwarding. `ping` works while TCP times out is
+          # the fingerprint. k3s sets this to 1 at startup, so a node can
+          # disagree with its own disk indefinitely without symptom, until
+          # something runs `sysctl --system`.
+          #
+          # rp_filter: loose (2), not strict (1). The effective value is
+          # max(conf.all, conf.<iface>), so conf.all decides and no
+          # per-interface setting can relax it. Strict mode drops any packet
+          # whose source would route back out a different interface, which is
+          # ordinary steady state on a node running flannel VXLAN alongside
+          # Tailscale policy routing. Enumerating interfaces here is not
+          # possible anyway -- veth* are created and destroyed continuously.
+          net.ipv4.ip_forward = {{ k3s_sysctl_invariants['net.ipv4.ip_forward'] }}
+          net.ipv4.conf.all.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.all.rp_filter'] }}
+          net.ipv4.conf.default.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.default.rp_filter'] }}
+      tags: sysctl
+
+    - name: Apply sysctl drop-ins
+      command: sysctl --system
+      changed_when: false
+      tags: sysctl
+
+    - name: Read the invariants back after the reload
+      command: "sysctl -n {{ k3s_sysctl_invariants.keys() | list | join(' ') }}"
+      register: k3s_sysctl_effective
+      changed_when: false
+      tags: sysctl
+
+    - name: Fail if a drop-in lost the merge
+      assert:
+        that:
+          - k3s_sysctl_effective.stdout_lines == (k3s_sysctl_invariants.values() | map('string') | list)
+        fail_msg: >-
+          sysctl.d did not merge to the k3s invariants. For
+          {{ k3s_sysctl_invariants.keys() | list }} expected
+          {{ k3s_sysctl_invariants.values() | list }}, got
+          {{ k3s_sysctl_effective.stdout_lines }}.
+          Either a drop-in is missing, or something in /etc/sysctl.d sorts after
+          99-k3s-*.conf and overrode it. Writing the file is not evidence that
+          it won -- that confusion is the root cause of SafeZone#63.
+      tags: sysctl
+
+    # fwupd manages firmware. A VM has no firmware its operator can touch, so
+    # the daemon is dead weight there -- on ct-serv-jp it also fails on every
+    # start. Bare metal keeps it: that is a real function on a machine whose
+    # firmware someone actually maintains.
+    #
+    # Keyed on node_platform, not node_provider. "local" says the box sits in
+    # the operator's house, not that it is bare metal -- a VM run at home is
+    # also node_provider=local. See inventory.ini.
+    #
+    # Deliberately no autoremove (the apt module's default). Purging fwupd
+    # orphans ~48 packages, jq and udisks2 among them; leaving them installed
+    # is cheaper than reasoning about what else on the node wants them.
+    - name: Remove fwupd on virtualized nodes
+      apt:
+        name: fwupd
+        state: absent
+        purge: yes
+      when: node_platform == 'vm'
+      tags: fwupd
+
     - name: Install Tailscale
       apt:
         name: tailscale
@@ -77,8 +206,17 @@
 # node_tier=medium
 # node_ha_level=local-24h
 # node_provider=local
+# node_platform=bare-metal|vm
+#   Load-bearing: the fwupd task keys on it and takes no default, so a host
+#   missing it fails the play. That is deliberate -- failing loudly beats
+#   silently leaving firmware tooling on a guest. Chorde#10.
+#
+# Optional per-host variables:
+# node_external_ip="<reserved public ip>"
+#   Nothing in this playbook reads it. Recorded for humans; see inventory.ini
+#   for what an empty value does and does not mean. Chorde#13.
 
 # Author: bradyhau
 # Project: SafeChord / Chorde / K3han
-# Date: 2025-04
+# Date: 2026-09
 # Status: Documentation Only (Not Executed)
