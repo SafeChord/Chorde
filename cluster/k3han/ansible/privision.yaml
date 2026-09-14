@@ -106,6 +106,26 @@
           it won -- that confusion is the root cause of SafeZone#63.
       tags: sysctl
 
+    # fwupd manages firmware. A VM has no firmware its operator can touch, so
+    # the daemon is dead weight there -- on ct-serv-jp it also fails on every
+    # start. Bare metal keeps it: that is a real function on a machine whose
+    # firmware someone actually maintains.
+    #
+    # Keyed on node_platform, not node_provider. "local" says the box sits in
+    # the operator's house, not that it is bare metal -- a VM run at home is
+    # also node_provider=local. See inventory.ini.
+    #
+    # Deliberately no autoremove (the apt module's default). Purging fwupd
+    # orphans ~48 packages, jq and udisks2 among them; leaving them installed
+    # is cheaper than reasoning about what else on the node wants them.
+    - name: Remove fwupd on virtualized nodes
+      apt:
+        name: fwupd
+        state: absent
+        purge: yes
+      when: node_platform == 'vm'
+      tags: fwupd
+
     - name: Install Tailscale
       apt:
         name: tailscale
