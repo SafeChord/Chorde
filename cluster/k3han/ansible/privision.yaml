@@ -4,7 +4,6 @@
   become: yes
 
   vars:
-    tailscale_authkey: "<YOUR_TAILSCALE_AUTHKEY>"   # Optional: Tailscale authkey if needed
     k3s_server_ip: "<CT-SERV-JP_VPN_IP>"            # Example: 100.100.x.x
     k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
 
@@ -23,11 +22,32 @@
       fs.inotify.max_user_instances: 8192
       fs.inotify.max_user_watches: 524288
 
+  # PRECONDITION: the node is already on the tailnet.
+  #
+  # This play connects over Tailscale -- every ansible_host in inventory.ini is
+  # a 100.64.x address -- so joining the tailnet cannot be a task inside it.
+  # Ansible would have had to reach the node over the tailnet to run the task
+  # that puts it on the tailnet. No play keyword escapes that: pre_tasks runs in
+  # this same play over this same connection, and so does everything else. The
+  # only shape that works inside ansible is a separate play on hosts: localhost
+  # driving the provider's API, which is a different job from this one.
+  #
+  # Bootstrap therefore belongs to the provider layer -- cloud-init, a startup
+  # script, or baked into the image. That is still automation and still scales;
+  # it just sits one layer below ansible:
+  #
+  #     apt install tailscale
+  #     tailscale up --authkey <key> --advertise-tags=tag:edge-node
+  #
+  # This play picks the node up from that state onward. These two commands used
+  # to be tasks here; they were never reachable.
+
   tasks:
     # --- Node sysctl baseline ------------------------------------------------
-    # Runs first, before Tailscale and k3s: k3s needs the inotify headroom from
-    # the moment it starts, and Tailscale subnet routing plus every k3s Service
-    # depend on ip_forward being 1.
+    # Runs first: k3s needs the inotify headroom from the moment it starts, and
+    # every k3s Service depends on ip_forward being 1 -- as does the Tailscale
+    # subnet routing this play arrives over, which is already up by then (see
+    # the precondition above).
     #
     # ORDER IS LOAD-BEARING. Both drop-ins are written BEFORE `sysctl --system`,
     # never after. The reload re-applies every file in the sysctl.d search path
@@ -137,19 +157,6 @@
         purge: yes
       when: node_platform == 'vm'
       tags: fwupd
-
-    - name: Install Tailscale
-      apt:
-        name: tailscale
-        state: latest
-      tags: tailscale
-
-    - name: Start and authenticate Tailscale VPN
-      shell: |
-        tailscale up --authkey {{ tailscale_authkey }} --advertise-tags=tag:edge-node
-      args:
-        creates: /var/lib/tailscale/tailscaled.state
-      tags: tailscale
 
     - name: Install K3s agent with specified node name
       shell: |
