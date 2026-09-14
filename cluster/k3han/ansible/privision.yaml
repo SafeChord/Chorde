@@ -194,8 +194,17 @@
 # node_tier=medium
 # node_ha_level=local-24h
 # node_provider=local
+# node_platform=bare-metal|vm
+#   Load-bearing: the fwupd task keys on it and takes no default, so a host
+#   missing it fails the play. That is deliberate -- failing loudly beats
+#   silently leaving firmware tooling on a guest. Chorde#10.
+#
+# Optional per-host variables:
+# node_external_ip="<reserved public ip>"
+#   Nothing in this playbook reads it. Recorded for humans; see inventory.ini
+#   for what an empty value does and does not mean. Chorde#13.
 
 # Author: bradyhau
 # Project: SafeChord / Chorde / K3han
-# Date: 2025-04
+# Date: 2026-09
 # Status: Documentation Only (Not Executed)

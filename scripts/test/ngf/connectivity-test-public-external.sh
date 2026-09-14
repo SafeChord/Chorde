@@ -43,9 +43,11 @@ FIREWALL_YAML="${REPO_ROOT}/cluster/k3han/ansible/gce_firewall.yaml"
 GATEWAY_YAML="${REPO_ROOT}/gitops/k3han/manifests/public-gateway/gateway.yaml"
 CF_IPS_URL="https://www.cloudflare.com/ips-v4"
 
-# ORIGIN_IP is optional — the GCE public IP is not recorded anywhere in this
-# repo (inventory.ini carries Tailscale addresses only), so Gate 5 is skipped
-# unless the caller supplies it.
+# ORIGIN_IP is optional. The address IS recorded in this repo as of Chorde#13 --
+# inventory.ini carries it as gce-agent-tw's node_external_ip -- but this script
+# deliberately does not read it. Defaulting it from the inventory would couple a
+# credential-free test, runnable from any machine, to the ansible inventory
+# format. Gate 5 is skipped unless the caller supplies it.
 ORIGIN_IP="${ORIGIN_IP:-}"
 
 PASS_COUNT=0
