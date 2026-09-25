@@ -6,6 +6,9 @@
   vars:
     k3s_server_ip: "<CT-SERV-JP_VPN_IP>"            # Example: 100.100.x.x
     k3s_token: "<K3S_CLUSTER_JOIN_TOKEN>"
+    # Inventory name of the control plane. The pod-CIDR lookups are delegated
+    # to it: it is the one node with an admin kubeconfig. Chorde#16.
+    k3s_server_host: ct-serv-jp
 
     # The single source for the sysctl invariants. Both drop-in bodies, the
     # read-back argument list and the assert's expected values all derive from
@@ -19,6 +22,7 @@
       net.ipv4.ip_forward: 1
       net.ipv4.conf.all.rp_filter: 2
       net.ipv4.conf.default.rp_filter: 2
+      net.bridge.bridge-nf-call-iptables: 1
       fs.inotify.max_user_instances: 8192
       fs.inotify.max_user_watches: 524288
 
@@ -57,6 +61,25 @@
     # that node's ingress down until the override lands. That is how SafeZone#63
     # happened: an inotify reload on a node whose disk and runtime had disagreed
     # about ip_forward for 492 days. Chorde#10.
+
+    # net.bridge.* keys exist only while br_netfilter is loaded. k3s loads it
+    # at service start, but this baseline runs before k3s is installed on a
+    # fresh node, and sysctl --system and the read-back would both fail on the
+    # missing key. Load it now and persist it across reboots. Chorde#16.
+    - name: Persist br_netfilter
+      copy:
+        dest: /etc/modules-load.d/br_netfilter.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: "br_netfilter\n"
+      tags: sysctl
+
+    - name: Load br_netfilter
+      modprobe:
+        name: br_netfilter
+        state: present
+      tags: sysctl
 
     - name: Raise inotify quotas for k3s
       copy:
@@ -103,14 +126,24 @@
           #
           # rp_filter: loose (2), not strict (1). The effective value is
           # max(conf.all, conf.<iface>), so conf.all decides and no
-          # per-interface setting can relax it. Strict mode drops any packet
-          # whose source would route back out a different interface, which is
-          # ordinary steady state on a node running flannel VXLAN alongside
-          # Tailscale policy routing. Enumerating interfaces here is not
-          # possible anyway -- veth* are created and destroyed continuously.
+          # per-interface setting can relax it. Cross-node pod packets arrive
+          # on tailscale0 (Tailscale's table 52 carries the pod CIDRs), but
+          # the reverse route for their pod source in the main table is
+          # flannel's `via flannel.1`. Different interface, so strict mode
+          # drops every cross-node pod packet. Loose mode is what keeps pod
+          # networking up, not a tolerance for overlay noise. Enumerating
+          # interfaces here is not possible anyway -- veth* are created and
+          # destroyed continuously. Chorde#16.
+          #
+          # bridge-nf-call-iptables: same-node pod traffic is switched at L2
+          # inside the cni0 bridge and never reaches IP forwarding. This hands
+          # it to iptables anyway, which is the only reason NetworkPolicy
+          # (kube-router's physdev rules) sees it. At 0 same-node policy stops
+          # applying, with no error. Chorde#16.
           net.ipv4.ip_forward = {{ k3s_sysctl_invariants['net.ipv4.ip_forward'] }}
           net.ipv4.conf.all.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.all.rp_filter'] }}
           net.ipv4.conf.default.rp_filter = {{ k3s_sysctl_invariants['net.ipv4.conf.default.rp_filter'] }}
+          net.bridge.bridge-nf-call-iptables = {{ k3s_sysctl_invariants['net.bridge.bridge-nf-call-iptables'] }}
       tags: sysctl
 
     - name: Apply sysctl drop-ins
@@ -158,45 +191,109 @@
       when: node_platform == 'vm'
       tags: fwupd
 
-    - name: Install K3s agent with specified node name
-      shell: |
-        curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -s - agent --node-name {{ inventory_hostname }}
-      tags: k3s
-
-    - name: Get pod CIDR for node
-      shell: |
-        kubectl get pod -n kube-system -o wide \
-          | grep svclb-traefik- \
-          | grep {{ inventory_hostname }} \
-          | awk '{split($(NF-3),a,"."); print a[1]"."a[2]"."a[3]".0/24"}'
-      register: node_pod_cidr
-      changed_when: false
-      failed_when: node_pod_cidr.rc != 0
-
-    - name: Advertise pod CIDR route via Tailscale
-      shell: |
-        tailscale up --accept-routes=true --advertise-routes={{ node_pod_cidr.stdout }}
-      when: node_pod_cidr.stdout != ""
-      ignore_errors: true
-      tags: tailscale
-
+    # --- k3s agent -------------------------------------------------------------
+    # The control plane is provisioned outside this play; its unit, flags
+    # included, is recorded in cluster/k3han/k3s/ct-serv-jp/k3s.service.
+    #
+    # --node-external-ip is the node's Tailscale address. flannel publishes it
+    # as its VTEP endpoint, so the (normally unused) VXLAN fallback also runs
+    # over the tailnet. It is passed to the installer so it lands in the unit
+    # k3s generates, not appended to that unit afterwards.
     - name: Get Tailscale IP for external access
-      shell: |
-        tailscale ip | grep -m 1 '^[0-9]'
+      command: tailscale ip -4
       register: tailscale_ip
       changed_when: false
-      failed_when: tailscale_ip.rc != 0
 
-    - name: Add external IP to k3s-agent.service
+    - name: Install K3s agent with specified node name
       shell: |
-        echo -e "\t\t--node-external-ip={{ tailscale_ip.stdout }}" | tee -a /etc/systemd/system/k3s-agent.service
-      tags: external-ip
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -s - agent --node-name {{ inventory_hostname }} --node-external-ip {{ tailscale_ip.stdout }}
+      when: "'control-plane' not in node_roles"
+      tags: k3s
 
-    - name: Reload and restart k3s-agent service
-      systemd:
-        daemon_reload: yes
-        name: k3s-agent
-        state: restarted
+    # --- Pod data path ---------------------------------------------------------
+    # Cross-node pod traffic does not ride flannel's VXLAN backend. Each node
+    # advertises its pod CIDR as a Tailscale subnet route and accepts the
+    # others'. Tailscale installs those routes in table 52 behind `ip rule`
+    # pref 5270, which is consulted before the main table, so they win over
+    # flannel's `via flannel.1` routes for the same prefixes. flannel remains
+    # the CNI (IPAM, cni0, its iptables rules); only its overlay is idle.
+    # Chorde#16.
+    #
+    # The pod CIDR comes from the node object k3s allocated it on. It used to
+    # be inferred from svclb-traefik pod IPs, which returns nothing once
+    # Traefik is disabled, and then the advertise task was skipped silently.
+    - name: Get pod CIDR for node
+      command: kubectl get node {{ inventory_hostname }} -o jsonpath={.spec.podCIDR}
+      delegate_to: "{{ k3s_server_host }}"
+      register: node_pod_cidr
+      until: node_pod_cidr.stdout != ""
+      retries: 12
+      delay: 5
+      changed_when: false
+      tags: tailscale
+
+    # `set`, not `up`: `up` re-applies the full preference set and resets any
+    # flag not repeated on its command line. That is the likely way the node
+    # tags set at join time, and the legacy 10.43 advertisement, disappeared
+    # from every node (inferred, not reproduced).
+    #
+    # --snat-subnet-routes=false: with SNAT on, whether a cross-node client
+    # keeps its pod IP depends on which of Tailscale's ts-forward and
+    # kube-router's ACCEPT comes first in FORWARD, and nothing arbitrates that
+    # order. On acer-agent Tailscale won, and every cross-node client reached
+    # its pods as 10.42.1.1. NetworkPolicy was unaffected (FORWARD runs before
+    # the POSTROUTING masquerade); the applications were not.
+    - name: Advertise pod CIDR route via Tailscale
+      command: >-
+        tailscale set
+        --accept-routes=true
+        --advertise-routes={{ node_pod_cidr.stdout }}
+        --snat-subnet-routes=false
+      tags: tailscale
+
+    # Gate: assert the routing outcome, not the flags. Each check below fails
+    # the play; any one of them failing means pod traffic has fallen back to
+    # VXLAN inside WireGuard, which works, alerts nothing, and is never what
+    # was intended. Mirrors scripts/test/pod-path/node-routing-test.sh.
+    - name: Read tailscaled preferences back
+      command: tailscale debug prefs
+      register: tailscale_prefs_raw
+      changed_when: false
+      tags: tailscale
+
+    - name: Fail unless this node advertises its own pod CIDR without SNAT
+      assert:
+        that:
+          - (tailscale_prefs_raw.stdout | from_json).AdvertiseRoutes == [node_pod_cidr.stdout]
+          - (tailscale_prefs_raw.stdout | from_json).RouteAll
+          - (tailscale_prefs_raw.stdout | from_json).NoSNAT
+        fail_msg: >-
+          tailscaled prefs do not match the pod data path. Expected
+          AdvertiseRoutes == [{{ node_pod_cidr.stdout }}], RouteAll and NoSNAT
+          true.
+      tags: tailscale
+
+    - name: Get every node's pod CIDR
+      command: kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR
+      delegate_to: "{{ k3s_server_host }}"
+      run_once: true
+      register: cluster_pod_cidrs
+      changed_when: false
+      tags: tailscale
+
+    # A peer's route appears in table 52 only after the peer advertises it and
+    # it is approved in the tailnet admin console. Approval is manual today, so
+    # on a new node this gate fails until someone approves the route. That is
+    # intended.
+    - name: Resolve the route to every other node's pod CIDR
+      command: "ip route get {{ item.split()[1].split('/')[0] | regex_replace('0$', '1') }}"
+      loop: "{{ cluster_pod_cidrs.stdout_lines | reject('match', inventory_hostname ~ ' ') | list }}"
+      register: peer_routes
+      until: "'dev tailscale0 table 52' in peer_routes.stdout"
+      retries: 12
+      delay: 5
+      changed_when: false
+      tags: tailscale
 
     - name: Patch node labels dynamically from inventory
       shell: |
@@ -217,6 +314,9 @@
 #   Load-bearing: the fwupd task keys on it and takes no default, so a host
 #   missing it fails the play. That is deliberate -- failing loudly beats
 #   silently leaving firmware tooling on a guest. Chorde#10.
+#
+# node_roles="control-plane" | ""
+#   The control plane is skipped by the k3s agent install. Chorde#16.
 #
 # Optional per-host variables:
 # node_external_ip="<reserved public ip>"
