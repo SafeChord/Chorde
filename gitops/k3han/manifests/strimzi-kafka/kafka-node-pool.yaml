@@ -19,7 +19,7 @@ spec:
         type: persistent-claim
         size: 5Gi
         deleteClaim: false
-        class: local-nfs
+        class: local-path
   resources:
     requests:
       memory: 512Mi

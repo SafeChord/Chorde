@@ -1,16 +1,26 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: acer-nfs-1g-2
+  name: acer-local-1g-valkey
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
   capacity:
     storage: 1Gi
-  storageClassName: local-nfs
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  nfs:
-    path: /mnt/k3s/pv/1g/2
-    server: 192.168.0.2
+  storageClassName: local-path
+  claimRef:
+    namespace: redis
+    name: data-valkey-0
+  local:
+    path: /mnt/k3han-pv/valkey
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - acer-agent
