@@ -1,6 +1,8 @@
 
-commandArgs:
-  - "--key-renew-period=0"  # 停用金鑰自動更新，避免 re-seal 問題
+# Disable sealing key renewal: the key set stays fixed, so one off-cluster
+# backup covers it (Docs safechord.security.md, Sealing Keys). The chart
+# reads only this value; "0" must stay a quoted string.
+keyrenewperiod: "0"
 
 affinity:
   nodeAffinity:
