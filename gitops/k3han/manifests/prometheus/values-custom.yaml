@@ -160,6 +160,22 @@ prometheus-node-exporter:
   # to aviod node exporter mount the root directory on machines
   hostRootFsMount:
     enabled: false
+  # node-exporter runs on hostNetwork, so its targets are node InternalIPs that
+  # Prometheus on ct-serv-jp cannot reach; rewrite them to Tailscale IPs, as
+  # for the kubelet above.
+  prometheus:
+    monitor:
+      relabelings:
+        # acer-agent: 192.168.0.2 → 100.64.1.21
+        - sourceLabels: [__address__]
+          regex: '192\.168\.0\.2:(.*)'
+          targetLabel: __address__
+          replacement: '100.64.1.21:$1'
+        # gce-agent-tw: 10.140.0.5 → 100.64.2.21
+        - sourceLabels: [__address__]
+          regex: '10\.140\.0\.5:(.*)'
+          targetLabel: __address__
+          replacement: '100.64.2.21:$1'
 
 prometheusOperator:  
   affinity:
