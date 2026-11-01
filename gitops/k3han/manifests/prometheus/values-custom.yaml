@@ -12,12 +12,17 @@ alertmanager:
         - matchers:
             - alertname = "Watchdog"
           receiver: "null"
-        # K3s integrates kube-proxy/scheduler/controller-manager into a single binary
-        # and does not expose their individual metrics endpoints. These alerts will
-        # always fire on K3s clusters and are not actionable.
+        # K3s runs kube-proxy, the scheduler and the controller-manager inside the
+        # k3s binary, not as pods. The chart's Services for them select pods by
+        # label, so they have no endpoints and no up series exists: these
+        # absent(up{job=...}) alerts always fire and are not actionable.
         - matchers:
             - alertname =~ "KubeProxyDown|KubeSchedulerDown|KubeControllerManagerDown"
           receiver: "null"
+        # TargetDown stays on slack. It fires only on targets that exist and fail
+        # to scrape (up == 0), which the components above never produce, so every
+        # TargetDown is a real scrape failure. Routing it to null in kube-system
+        # and monitoring (0ce775e) hid the agents' unreachable node-exporter.
     receivers:
       - name: "null"
       - name: slack
