@@ -116,8 +116,11 @@ kube-state-metrics:
 # Prometheus on ct-serv-jp can reach agent nodes across the mesh.
 kubelet:
   serviceMonitor:
-    # /metrics endpoint
-    relabelings: &tailscale-relabel
+    # /metrics endpoint. Setting this list replaces the chart default, which
+    # holds the metrics_path relabel that KubeletDown matches on; keep it first.
+    relabelings:
+      - sourceLabels: [__metrics_path__]
+        targetLabel: metrics_path
       # acer-agent: 192.168.0.2 → 100.64.1.21
       - sourceLabels: [__address__]
         regex: '192\.168\.0\.2:(.*)'
