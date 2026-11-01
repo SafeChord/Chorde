@@ -18,11 +18,6 @@ alertmanager:
         - matchers:
             - alertname =~ "KubeProxyDown|KubeSchedulerDown|KubeControllerManagerDown"
           receiver: "null"
-        # TargetDown fired due to K3s built-in components not exposing scrape targets.
-        - matchers:
-            - alertname = "TargetDown"
-            - namespace =~ "kube-system|monitoring"
-          receiver: "null"
     receivers:
       - name: "null"
       - name: slack
