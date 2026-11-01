@@ -230,6 +230,63 @@
       when: node_tier == 'low' and journald_cap is changed
       tags: journald
 
+    # A 1G swapfile on low-tier nodes. gce-agent-tw has 969M of RAM and ~180M
+    # available at rest; on 2026-11-01 three concurrent apt runs exhausted it,
+    # and with nowhere to page out the node thrashed and went NotReady for four
+    # minutes. Swap gives the host's own processes (k3s-agent, tailscaled, the
+    # GCE agents, apt) somewhere to go instead.
+    #
+    # Pods do not swap. k3s runs the kubelet with failSwapOn: false, so swap
+    # does not stop it starting, and leaves memorySwap unset, so swapBehavior
+    # is the default NoSwap: workloads keep their memory limits and eviction as
+    # before. NodeSwap is GA from Kubernetes 1.34 and needs cgroup v2, which
+    # the node runs. Both settings read from the live kubelet's configz.
+    #
+    # fallocate, not dd: it reserves the blocks without writing them, so it
+    # adds no page-cache pressure on a node that is short of memory. ext4, the
+    # root filesystem here, accepts a preallocated swapfile; on one that does
+    # not, mkswap or swapon fails rather than enabling a broken swap.
+    - name: Allocate the swapfile on low-tier nodes
+      command: fallocate -l 1G /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile_created
+      when: node_tier == 'low'
+      tags: swap
+
+    - name: Restrict the swapfile to root
+      file:
+        path: /swapfile
+        owner: root
+        group: root
+        mode: '0600'
+      when: node_tier == 'low'
+      tags: swap
+
+    - name: Format the swapfile
+      command: mkswap /swapfile
+      when: node_tier == 'low' and swapfile_created is changed
+      tags: swap
+
+    - name: Persist the swapfile across reboots
+      lineinfile:
+        path: /etc/fstab
+        line: /swapfile none swap sw 0 0
+      when: node_tier == 'low'
+      tags: swap
+
+    - name: Read the active swap areas
+      command: swapon --show=NAME --noheadings
+      register: swap_active
+      changed_when: false
+      when: node_tier == 'low'
+      tags: swap
+
+    - name: Enable the swapfile
+      command: swapon /swapfile
+      when: node_tier == 'low' and '/swapfile' not in swap_active.stdout_lines
+      tags: swap
+
     # --- k3s agent -------------------------------------------------------------
     # The control plane is provisioned outside this play; its unit, flags
     # included, is recorded in cluster/k3han/k3s/ct-serv-jp/k3s.service.
@@ -347,7 +404,7 @@
 # Required per-host variables in inventory:
 # node_region=tw
 # node_tier=low|medium|high
-#   The journald cap keys on it: low-tier nodes get it.
+#   The journald cap and the swapfile key on it: low-tier nodes get both.
 # node_ha_level=local-24h
 # node_provider=local
 # node_platform=bare-metal|vm
