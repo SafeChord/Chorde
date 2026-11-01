@@ -191,6 +191,45 @@
       when: node_platform == 'vm'
       tags: fwupd
 
+    # journald's default ceiling is 10% of the filesystem. On a low-tier node
+    # that is ~1G of a ~10G root disk: gce-agent-tw sat at the ceiling (988M)
+    # with 24% of its disk free. Container logs are files under /var/log/pods,
+    # not journal entries, so the cap shortens only the host units' history
+    # (k3s-agent, tailscaled, the ops agent). Medium and high tiers have the
+    # disk to keep the default.
+    #
+    # The drop-in directory does not exist on a stock Debian 12 image.
+    - name: Create the journald drop-in directory on low-tier nodes
+      file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: node_tier == 'low'
+      tags: journald
+
+    - name: Cap journald disk use on low-tier nodes
+      copy:
+        dest: /etc/systemd/journald.conf.d/50-size-cap.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Journal]
+          SystemMaxUse=200M
+      register: journald_cap
+      when: node_tier == 'low'
+      tags: journald
+
+    # journald reads its config at start, so the cap needs a restart.
+    - name: Restart journald to apply the cap
+      systemd:
+        name: systemd-journald
+        state: restarted
+      when: node_tier == 'low' and journald_cap is changed
+      tags: journald
+
     # --- k3s agent -------------------------------------------------------------
     # The control plane is provisioned outside this play; its unit, flags
     # included, is recorded in cluster/k3han/k3s/ct-serv-jp/k3s.service.
@@ -307,7 +346,8 @@
 
 # Required per-host variables in inventory:
 # node_region=tw
-# node_tier=medium
+# node_tier=low|medium|high
+#   The journald cap keys on it: low-tier nodes get it.
 # node_ha_level=local-24h
 # node_provider=local
 # node_platform=bare-metal|vm
