@@ -114,44 +114,57 @@ kube-state-metrics:
 
 # Rewrite kubelet scrape targets to use Tailscale IPs (EXTERNAL-IP) so
 # Prometheus on ct-serv-jp can reach agent nodes across the mesh.
+# Every relabeling here and under prometheus-node-exporter spells out
+# `action: replace`, the ServiceMonitor CRD's default. Left out, the API server
+# fills it in, ArgoCD sees the live object differ from git, and self-heal
+# re-syncs the app every five minutes without ever reaching Synced.
 kubelet:
   serviceMonitor:
     # /metrics endpoint. Setting this list replaces the chart default, which
     # holds the metrics_path relabel that KubeletDown matches on; keep it first.
     relabelings:
-      - sourceLabels: [__metrics_path__]
+      - action: replace
+        sourceLabels: [__metrics_path__]
         targetLabel: metrics_path
       # acer-agent: 192.168.0.2 → 100.64.1.21
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '192\.168\.0\.2:(.*)'
         targetLabel: __address__
         replacement: '100.64.1.21:$1'
       # gce-agent-tw: 10.140.0.5 → 100.64.2.21
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '10\.140\.0\.5:(.*)'
         targetLabel: __address__
         replacement: '100.64.2.21:$1'
     # /metrics/cadvisor endpoint
     cAdvisorRelabelings:
-      - sourceLabels: [__metrics_path__]
+      - action: replace
+        sourceLabels: [__metrics_path__]
         targetLabel: metrics_path
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '192\.168\.0\.2:(.*)'
         targetLabel: __address__
         replacement: '100.64.1.21:$1'
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '10\.140\.0\.5:(.*)'
         targetLabel: __address__
         replacement: '100.64.2.21:$1'
     # /metrics/probes endpoint
     probesRelabelings:
-      - sourceLabels: [__metrics_path__]
+      - action: replace
+        sourceLabels: [__metrics_path__]
         targetLabel: metrics_path
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '192\.168\.0\.2:(.*)'
         targetLabel: __address__
         replacement: '100.64.1.21:$1'
-      - sourceLabels: [__address__]
+      - action: replace
+        sourceLabels: [__address__]
         regex: '10\.140\.0\.5:(.*)'
         targetLabel: __address__
         replacement: '100.64.2.21:$1'
@@ -167,12 +180,14 @@ prometheus-node-exporter:
     monitor:
       relabelings:
         # acer-agent: 192.168.0.2 → 100.64.1.21
-        - sourceLabels: [__address__]
+        - action: replace
+          sourceLabels: [__address__]
           regex: '192\.168\.0\.2:(.*)'
           targetLabel: __address__
           replacement: '100.64.1.21:$1'
         # gce-agent-tw: 10.140.0.5 → 100.64.2.21
-        - sourceLabels: [__address__]
+        - action: replace
+          sourceLabels: [__address__]
           regex: '10\.140\.0\.5:(.*)'
           targetLabel: __address__
           replacement: '100.64.2.21:$1'
