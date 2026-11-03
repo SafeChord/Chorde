@@ -1,0 +1,22 @@
+# vuln-scan: weekly trivy scan of the images running in K3han, findings to
+# GitHub Code Scanning on SafeChord/Chorde (Chorde#40; Docs:
+# safechord.chorde.k3han.operations.md §3.1). The script and the VEX statements
+# are plain files here, packed into ConfigMaps: a VEX change takes effect at the
+# next scan after its PR syncs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: vuln-scan
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - cronjob.yaml
+  - sealed-github-app.yaml
+configMapGenerator:
+  - name: vuln-scan-script
+    files:
+      - scan.sh
+      - images.jq
+      - sarif.jq
+  - name: vuln-scan-vex
+    files:
+      - vex.openvex.json

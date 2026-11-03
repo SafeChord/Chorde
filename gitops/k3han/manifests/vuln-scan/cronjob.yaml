@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vuln-scan
+  namespace: vuln-scan
+spec:
+  # Weekly: Monday 03:00 Taiwan time.
+  schedule: "0 3 * * 1"
+  timeZone: Asia/Taipei
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      # A failed run waits for next week rather than retrying; KubeJobFailed
+      # carries it to Slack. The finished Job is removed after a day so that
+      # alert resolves instead of firing until the next run. Logs stay in Loki.
+      backoffLimit: 0
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          serviceAccountName: vuln-scan
+          restartPolicy: Never
+          affinity:
+            nodeAffinity:
+              # Never gce-agent-tw: its allocatable memory is about 1 GiB.
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: NotIn
+                        values: ["gce-agent-tw"]
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          containers:
+            - name: trivy
+              # Pinned: the scanner's behaviour holds still; its vulnerability
+              # database is fetched at each run.
+              image: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+              command: ["sh", "/scripts/scan.sh"]
+              env:
+                - name: TRIVY_CACHE_DIR
+                  value: /cache
+                - name: TMPDIR
+                  value: /tmp
+                - name: VEX_FILE
+                  value: /vex/vex.openvex.json
+                - name: APP_DIR
+                  value: /github-app
+                - name: EXCLUDE_NAMESPACES
+                  value: safezone
+                - name: GITHUB_REPO
+                  value: SafeChord/Chorde
+                - name: SEVERITY
+                  value: HIGH,CRITICAL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: vex
+                  mountPath: /vex
+                  readOnly: true
+                - name: github-app
+                  mountPath: /github-app
+                  readOnly: true
+                - name: cache
+                  mountPath: /cache
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: script
+              configMap:
+                name: vuln-scan-script
+            - name: vex
+              configMap:
+                name: vuln-scan-vex
+            - name: github-app
+              secret:
+                secretName: github-app
+            - name: cache
+              emptyDir:
+                sizeLimit: 4Gi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 4Gi

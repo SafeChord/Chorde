@@ -1,0 +1,28 @@
+# The scanner lists the pods of every namespace to learn which images run.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vuln-scan
+  namespace: vuln-scan
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vuln-scan-pod-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vuln-scan-pod-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vuln-scan-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: vuln-scan
+    namespace: vuln-scan

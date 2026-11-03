@@ -28,6 +28,8 @@ spec:
             wave: "2"
           - service: system-upgrade-plan
             wave: "2"
+          - service: vuln-scan
+            wave: "2"
   template:
     metadata:
       name: 'platform-{{service}}'
