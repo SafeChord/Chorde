@@ -1,8 +1,18 @@
 # vuln-scan: weekly trivy scan of the images running in K3han, findings to
 # GitHub Code Scanning on SafeChord/Chorde (Chorde#40; Docs:
-# safechord.chorde.k3han.operations.md §3.1). The script and the VEX statements
-# are plain files here, packed into ConfigMaps: a VEX change takes effect at the
-# next scan after its PR syncs.
+# safechord.chorde.k3han.operations.md §3.1). The script is plain files here,
+# packed into a ConfigMap. The VEX statements are sealed (Chorde#43): Chorde is
+# public, and a statement records which flaws K3han judged unreachable. Their
+# plaintext is .ai-security/vex/chorde.openvex.json in the private workspace
+# harness; after editing it, reseal from the workspace root with
+#
+#   kubectl create secret generic vuln-scan-vex -n vuln-scan \
+#     --from-file=vex.openvex.json=.ai-security/vex/chorde.openvex.json \
+#     --dry-run=client -o yaml \
+#   | kubeseal --controller-name=sealed-secrets --controller-namespace=bootstrap \
+#     --format yaml > Chorde/gitops/k3han/manifests/vuln-scan/sealed-vex.yaml
+#
+# A VEX change takes effect at the next scan after its PR syncs.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: vuln-scan
@@ -11,12 +21,10 @@ resources:
   - rbac.yaml
   - cronjob.yaml
   - sealed-github-app.yaml
+  - sealed-vex.yaml
 configMapGenerator:
   - name: vuln-scan-script
     files:
       - scan.sh
       - images.jq
       - sarif.jq
-  - name: vuln-scan-vex
-    files:
-      - vex.openvex.json
