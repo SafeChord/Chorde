@@ -83,8 +83,8 @@ spec:
               configMap:
                 name: vuln-scan-script
             - name: vex
-              configMap:
-                name: vuln-scan-vex
+              secret:
+                secretName: vuln-scan-vex
             - name: github-app
               secret:
                 secretName: github-app

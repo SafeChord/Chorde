@@ -135,7 +135,9 @@ run_scan() {
     export WORK_DIR="$CASE/work"
     export SA_DIR="$CASE/sa"
     export APP_DIR="$CASE/app"
-    export VEX_FILE="$MANIFESTS/vex.openvex.json"
+    # The VEX statements are sealed in the cluster (Chorde#43); the scan reads
+    # whatever file VEX_FILE names, here one with no statement.
+    export VEX_FILE="$FIX/empty.openvex.json"
     export KUBE_API="https://kube.test"
     export GITHUB_API="https://api.github.test"
     export POLL_INTERVAL=0
@@ -176,8 +178,8 @@ check "every running image outside safezone is scanned ($expected_count)" \
   test "$(wc -l <<<"$images")" = "$expected_count"
 
 echo "trivy: VEX, severity and pinned behaviour"
-check "every image scan applies the committed VEX file" \
-  bash -c '! grep "^image " "$1" | grep -v -- --download-db-only | grep -v -q -- "--vex $2"' _ "$STUB_DIR/trivy.calls" "$MANIFESTS/vex.openvex.json"
+check "every image scan applies the VEX file VEX_FILE names" \
+  bash -c '! grep "^image " "$1" | grep -v -- --download-db-only | grep -v -q -- "--vex $2"' _ "$STUB_DIR/trivy.calls" "$FIX/empty.openvex.json"
 check "every image scan keeps HIGH and CRITICAL, unfixed included" \
   bash -c '! grep "^image " "$1" | grep -v -- --download-db-only | grep -v -q -- "--severity HIGH,CRITICAL"; ! grep -q -- --ignore-unfixed "$1"' _ "$STUB_DIR/trivy.calls"
 check "the database is fetched once, before the images are scanned" \
@@ -294,8 +296,23 @@ if rendered=$(kubectl kustomize "$MANIFESTS" 2>"$CASE/kustomize.err"); then
     bash -c 'jq -e ".spec.concurrencyPolicy == \"Forbid\" and .spec.jobTemplate.spec.backoffLimit == 0" <<<"$1" >/dev/null' _ "$cj"
   check "a finished Job is removed, so KubeJobFailed resolves instead of firing for a week" \
     bash -c 'jq -e ".spec.jobTemplate.spec.ttlSecondsAfterFinished > 0 and .spec.jobTemplate.spec.ttlSecondsAfterFinished <= 172800" <<<"$1" >/dev/null' _ "$cj"
-  check "scan.sh, images.jq, sarif.jq and the VEX file reach the pod from ConfigMaps" \
-    bash -c 'for f in scan.sh images.jq sarif.jq vex.openvex.json; do jq -s -e --arg f "$f" "any(.[]; .kind == \"ConfigMap\" and (.data | has(\$f)))" <<<"$1" >/dev/null || exit 1; done' _ "$docs"
+  check "scan.sh, images.jq and sarif.jq reach the pod from ConfigMaps" \
+    bash -c 'for f in scan.sh images.jq sarif.jq; do jq -s -e --arg f "$f" "any(.[]; .kind == \"ConfigMap\" and (.data | has(\$f)))" <<<"$1" >/dev/null || exit 1; done' _ "$docs"
+  # Chorde#43: Chorde is public, so the statements are sealed. The file VEX_FILE
+  # names must come from a Secret volume whose SealedSecret carries that file
+  # as a key, and no ConfigMap may carry a VEX document.
+  check "the VEX file VEX_FILE names reaches the pod from a SealedSecret" \
+    bash -c '
+      c=$(jq -c "$2.containers[] | select(.name == \"trivy\")" <<<"$1")
+      vex=$(jq -r ".env[] | select(.name == \"VEX_FILE\") | .value" <<<"$c")
+      dir=${vex%/*}; key=${vex##*/}
+      vol=$(jq -r --arg d "$dir" ".volumeMounts[] | select(.mountPath == \$d) | .name" <<<"$c")
+      secret=$(jq -r --arg v "$vol" "$2.volumes[] | select(.name == \$v) | select(.secret.items == null) | .secret.secretName // empty" <<<"$1")
+      test -n "$vex" && test -n "$secret" &&
+        jq -e -s --arg s "$secret" --arg k "$key" "any(.[]; .kind == \"SealedSecret\" and (.spec.template.metadata.name // .metadata.name) == \$s and (.spec.encryptedData | has(\$k)))" <<<"$3" >/dev/null' \
+      _ "$cj" "$pod" "$docs"
+  check "no ConfigMap carries a VEX document" \
+    bash -c '! jq -e -s "any(.[] | select(.kind == \"ConfigMap\") | .data // {} | .[]; test(\"openvex\\\\.dev/ns\"))" <<<"$1" >/dev/null' _ "$docs"
   check "the App key reaches the pod from the github-app SealedSecret" \
     bash -c 'jq -e "select(.kind == \"SealedSecret\" and .metadata.name == \"github-app\")" <<<"$1" >/dev/null && jq -e "any($2.volumes[]; .secret.secretName == \"github-app\")" <<<"$3" >/dev/null' _ "$docs" "$pod" "$cj"
   check "every namespaced object lives in vuln-scan" \
@@ -305,6 +322,9 @@ if rendered=$(kubectl kustomize "$MANIFESTS" 2>"$CASE/kustomize.err"); then
 else
   fail "the directory renders" "$(cat "$CASE/kustomize.err")"
 fi
+
+check "no file under gitops/ holds a VEX document in plaintext (Chorde#43)" \
+  bash -c '! git -C "$1" ls-files -z -- gitops | xargs -0 grep -l "openvex\.dev/ns" 2>/dev/null | grep -q .' _ "$REPO"
 
 check "the platform stage lists vuln-scan" \
   grep -qE '^\s*-\s*service:\s*vuln-scan\s*$' "$REPO/gitops/k3han/stages/01-platform.yaml"
@@ -318,9 +338,9 @@ if [ "${VULN_SCAN_IT:-0}" = 1 ]; then
   cve=$(jq -r '[.Results[].Vulnerabilities[]? | select(.PkgName == "pyasn1")][0].VulnerabilityID' "$IT/before.json")
   purl=$(jq -r '[.Results[].Vulnerabilities[]? | select(.PkgName == "pyasn1")][0].PkgIdentifier.PURL' "$IT/before.json")
   jq --arg cve "$cve" --arg purl "$purl" '.statements += [{vulnerability: {name: $cve}, products: [{"@id": $purl}], status: "not_affected", justification: "vulnerable_code_not_in_execute_path"}]' \
-    "$MANIFESTS/vex.openvex.json" > "$IT/vex.json"
-  trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --vex "$MANIFESTS/vex.openvex.json" --format json -o "$IT/committed.json" "$img"
-  check "the committed VEX file is accepted by trivy 0.76.1" test -s "$IT/committed.json"
+    "$FIX/empty.openvex.json" > "$IT/vex.json"
+  trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --vex "$FIX/empty.openvex.json" --format json -o "$IT/empty.json" "$img"
+  check "a VEX file with no statement is accepted by trivy 0.76.1" test -s "$IT/empty.json"
   trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --vex "$IT/vex.json" --format json -o "$IT/after.json" "$img"
   check "a VEX statement removes its finding ($cve on $purl)" \
     bash -c 'jq -e --arg c "$2" "any(.Results[].Vulnerabilities[]?; .VulnerabilityID == \$c and .PkgName == \"pyasn1\")" "$1" >/dev/null && ! jq -e --arg c "$2" "any(.Results[].Vulnerabilities[]?; .VulnerabilityID == \$c and .PkgName == \"pyasn1\")" "$3" >/dev/null' _ "$IT/before.json" "$cve" "$IT/after.json"
