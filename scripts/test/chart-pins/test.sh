@@ -25,7 +25,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; [ $# -gt 1 ] && echo "$2" | sed '
 # expect <name> pass|fail <env-dir> [pattern the output must hold]
 expect() {
   local name=$1 want=$2 dir=$3 pattern=${4:-} out rc
-  out=$(python3 "$CHECK" "$dir" 2>&1); rc=$?
+  out=$(cd "${RUN_IN:-.}" && python3 "$CHECK" "$dir" 2>&1); rc=$?
   if [ "$want" = pass ] && [ $rc -eq 0 ]; then ok "$name"
   elif [ "$want" = fail ] && [ $rc -eq 1 ] && { [ -z "$pattern" ] || grep -qF -- "$pattern" <<<"$out"; }; then ok "$name"
   else fail "$name (want $want, rc $rc)" "$out"
@@ -35,7 +35,8 @@ expect() {
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# new_env <stage services...>: an env dir whose one stage lists the services.
+# new_env <stage services...>: an env dir whose one stage lists the services
+# and excludes values.yaml from their directories (EXCLUDE overrides it).
 new_env() {
   local dir; dir=$(mktemp -d "$TMP/env.XXXX")
   mkdir -p "$dir/stages" "$dir/manifests"
@@ -43,6 +44,14 @@ new_env() {
     echo "apiVersion: argoproj.io/v1alpha1"
     echo "kind: ApplicationSet"
     echo "spec:"
+    echo "  template:"
+    echo "    spec:"
+    echo "      source:"
+    echo "        path: 'gitops/k3han/manifests/{{service}}'"
+    if [ -n "${EXCLUDE-values.yaml}" ]; then
+      echo "        directory:"
+      echo "          exclude: '${EXCLUDE-values.yaml}'"
+    fi
     echo "  generators:"
     echo "    - list:"
     echo "        elements:"
@@ -55,7 +64,9 @@ new_env() {
 DIGEST=sha256:$(printf 'a%.0s' $(seq 64))
 
 echo "== gitops/k3han"
-expect "every deployed chart has its defaults; every own image is tag@digest" pass "$REPO/gitops/k3han"
+# Run from manifests/, where each chart name is also a directory name.
+RUN_IN="$REPO/gitops/k3han/manifests" \
+  expect "every deployed chart has its defaults; every own image is tag@digest" pass "$REPO/gitops/k3han"
 
 echo "== chart defaults"
 KEDA="$REPO/gitops/k3han/manifests/keda"
@@ -81,12 +92,26 @@ sed -i 's/targetRevision: 2\.17\.2/targetRevision: 2.17.1/' "$d/manifests/keda/a
 grep -q 'targetRevision: 2.17.1' "$d/manifests/keda/application.yaml" || fail "fixture: keda is no longer at 2.17.2"
 expect "a version bump that keeps the old defaults" fail "$d" "keda/values.yaml: differs from keda 2.17.1"
 
-helm show values --repo https://kedacore.github.io/charts keda --version 2.17.1 > "$d/manifests/keda/values.yaml"
+(cd "$TMP" && helm show values --repo https://kedacore.github.io/charts keda --version 2.17.1) > "$d/manifests/keda/values.yaml"
 expect "a version bump that regenerates the defaults" pass "$d"
 
 d=$(keda_env)
 rm "$d/manifests/keda/values.yaml"
 expect "a chart application no stage deploys is not checked" pass "$d"
+
+d=$(new_env)
+cp -r "$KEDA" "$d/manifests/argocd"
+rm "$d/manifests/argocd/values.yaml"
+expect "argocd, applied outside the stages, is checked too" fail "$d" "argocd/values.yaml: missing"
+
+d=$(EXCLUDE= keda_env keda)
+expect "a stage that renders values.yaml as a manifest" fail "$d" "keda/values.yaml: rendered as a manifest"
+
+d=$(EXCLUDE='{values.yaml,README.md}' keda_env keda)
+expect "a stage that excludes values.yaml among others" pass "$d"
+
+d=$(EXCLUDE='*/values.yaml' keda_env keda)
+expect "a stage whose exclude misses values.yaml at the directory root" fail "$d" "rendered as a manifest"
 
 echo "== image pins"
 # img_env <file> <yaml>: an env with no chart application and one manifest.

@@ -17,10 +17,12 @@ Exits 0 when both hold, 1 with one line per finding otherwise. Needs
 python3 with PyYAML, and helm with network access to the chart repositories.
 """
 import difflib
+import fnmatch
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 import yaml
 
@@ -45,16 +47,28 @@ def load_all(path):
 
 
 def deployed_services(env_dir):
-    services = set(DEPLOYED_OUTSIDE_STAGES)
+    """Map each deployed service to the stage file whose ApplicationSet renders
+    its directory and that template's directory.exclude (None outside stages)."""
+    services = {s: None for s in DEPLOYED_OUTSIDE_STAGES}
     stages = os.path.join(env_dir, "stages")
     for name in sorted(os.listdir(stages)):
         if not name.endswith(".yaml"):
             continue
         for doc in load_all(os.path.join(stages, name)):
-            for gen in doc.get("spec", {}).get("generators", []):
+            spec = doc.get("spec", {})
+            source = spec.get("template", {}).get("spec", {}).get("source", {})
+            exclude = (source.get("directory") or {}).get("exclude", "")
+            for gen in spec.get("generators", []):
                 for el in gen.get("list", {}).get("elements", []):
-                    services.add(el["service"])
+                    services[el["service"]] = (name, exclude)
     return services
+
+
+def excluded(pattern, rel):
+    """ArgoCD matches directory.exclude as a glob; {a,b} lists alternatives."""
+    if pattern.startswith("{") and pattern.endswith("}"):
+        return any(fnmatch.fnmatchcase(rel, p) for p in pattern[1:-1].split(","))
+    return bool(pattern) and fnmatch.fnmatchcase(rel, pattern)
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +89,10 @@ def helm_show_values(repo_url, chart, version):
         cmd = ["helm", "show", "values", "--repo", repo_url, chart, "--version", version]
     else:  # ArgoCD writes an OCI registry without its oci:// scheme
         cmd = ["helm", "show", "values", f"oci://{repo_url.rstrip('/')}/{chart}", "--version", version]
-    out = subprocess.run(cmd, capture_output=True, text=True)
+    # helm reads a chart name that matches a directory under the working
+    # directory as that local chart, so it runs in an empty one.
+    with tempfile.TemporaryDirectory() as empty:
+        out = subprocess.run(cmd, capture_output=True, text=True, cwd=empty)
     if out.returncode != 0:
         return None, " ".join(cmd) + ": " + out.stderr.strip().splitlines()[-1]
     return out.stdout, None
@@ -83,7 +100,12 @@ def helm_show_values(repo_url, chart, version):
 
 def check_chart_defaults(env_dir, services):
     manifests = os.path.join(env_dir, "manifests")
-    for service in sorted(services):
+    for service, stage in sorted(services.items()):
+        # ArgoCD renders a stage's service directory as plain manifests, and a
+        # values.yaml there that reads like one fails the whole directory.
+        values = os.path.join(manifests, service, "values.yaml")
+        if stage and os.path.isfile(values) and not excluded(stage[1], "values.yaml"):
+            find(f"{service}/values.yaml", f"rendered as a manifest: {stage[0]} does not exclude it")
         app = os.path.join(manifests, service, "application.yaml")
         if not os.path.isfile(app):
             continue
