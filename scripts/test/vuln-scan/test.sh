@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Requirement tests for the vuln-scan CronJob (Chorde#40).
 #
-# Runs gitops/k3han/kustomize/vuln-scan/scan.sh against stubbed trivy and curl,
-# fed with real trivy output trimmed into fixtures/, checks the rendered
+# Runs gitops/k3han/kustomize/vuln-scan/scan.sh against a stubbed trivy, fed
+# with real trivy output trimmed into fixtures/, and against api_stub.py, which
+# stands in for the Kubernetes and GitHub APIs behind the real curl on a fake
+# clock (Chorde#56: retries over an hour take no real time); checks the rendered
 # manifests with `kubectl kustomize`, and checks the Application in the platform
 # stage's vuln-scan/ directory that deploys them (Chorde#54).
 #
 #   scripts/test/vuln-scan/test.sh            # stubbed, no network
 #   VULN_SCAN_IT=1 scripts/test/vuln-scan/test.sh   # also runs the real trivy (network)
 #
-# Needs: bash, jq, openssl, gzip, base64, kubectl (for kustomize).
+# Needs: bash, curl, python3, jq, openssl, gzip, base64, kubectl (for kustomize).
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -83,56 +85,45 @@ case $cmd in
 esac
 EOF
 
-  cat > "$CASE/bin/curl" <<'EOF'
+  # The Kubernetes and GitHub APIs are api_stub.py behind the real curl, so the
+  # scan meets real HTTP answers and real dropped connections (Chorde#56). Time
+  # is a fake clock in $STUB_DIR/clock: `sleep` advances it at once, `date`
+  # reads it, and the stub API answers by it.
+  date +%s > "$STUB_DIR/clock"
+  cat > "$CASE/bin/sleep" <<'EOF'
 #!/usr/bin/env bash
-# curl stub, dispatching on the URL. Honours -o, -d @file, --data-binary @file
-# and -f (an HTTP error then exits 22, as curl does).
-echo "$*" >> "$STUB_DIR/curl.calls"
-url=""; out=""; body=""; method=GET; failflag=0
-args=("$@")
-for ((i = 0; i < ${#args[@]}; i++)); do
-  a=${args[$i]}
+# sleep stub: advances the fake clock by the duration asked, without waiting.
+total=0
+for a in "$@"; do
   case $a in
-    -o) out=${args[$((i + 1))]} ;;
-    -X) method=${args[$((i + 1))]} ;;
-    -d|--data|--data-binary) body=${args[$((i + 1))]}; [ "$method" = GET ] && method=POST ;;
-    -f|--fail|-sf|-fs|-sSf|-fsS|-sfS|-Sf|-fS) failflag=1 ;;
-    http://*|https://*) url=$a ;;
+    *d) n=${a%d}; m=86400 ;; *h) n=${a%h}; m=3600 ;; *m) n=${a%m}; m=60 ;;
+    *s) n=${a%s}; m=1 ;; *) n=$a; m=1 ;;
   esac
+  total=$(awk -v t="$total" -v n="$n" -v m="$m" 'BEGIN { printf "%.3f", t + n * m }')
 done
-respond() { # respond <http status> <body>
-  if [ "$1" -ge 400 ]; then
-    [ $failflag = 1 ] && { echo "curl: (22) The requested URL returned error: $1" >&2; exit 22; }
-  fi
-  if [ -n "$out" ]; then printf '%s' "$2" > "$out"; else printf '%s' "$2"; fi
-}
-case $url in
-  */api/v1/pods*)
-    [ -n "${STUB_PODS_HTTP:-}" ] && respond "$STUB_PODS_HTTP" '{"kind":"Status"}'
-    respond 200 "$(cat "${STUB_PODS:-$FIX/pods.json}")" ;;
-  */app/installations/*/access_tokens)
-    respond 201 '{"token":"ghs_stub","expires_at":"2099-01-01T00:00:00Z"}' ;;
-  */commits/main)
-    respond 200 '{"sha":"0123456789abcdef0123456789abcdef01234567"}' ;;
-  */code-scanning/sarifs)
-    case $body in @*) cp "${body#@}" "$STUB_DIR/upload.json" ;; *) printf '%s' "$body" > "$STUB_DIR/upload.json" ;; esac
-    respond "${STUB_UPLOAD_HTTP:-202}" '{"id":"sarif-1","url":"https://api.github.com/x"}' ;;
-  */code-scanning/sarifs/*)
-    n=$(cat "$STUB_DIR/polls" 2>/dev/null || echo 0); echo $((n + 1)) > "$STUB_DIR/polls"
-    if [ "$n" -lt "${STUB_PENDING_POLLS:-1}" ]; then
-      respond 200 '{"processing_status":"pending"}'
-    else
-      respond 200 "{\"processing_status\":\"${STUB_STATUS:-complete}\",\"errors\":${STUB_ERRORS:-null}}"
-    fi ;;
-  *) echo "curl stub: unexpected URL $url" >&2; exit 7 ;;
-esac
+awk -v t="$total" '{ printf "%.3f\n", $1 + t }' "$STUB_DIR/clock" > "$STUB_DIR/clock.tmp"
+mv "$STUB_DIR/clock.tmp" "$STUB_DIR/clock"
 EOF
-  chmod +x "$CASE/bin/trivy" "$CASE/bin/curl"
+  cat > "$CASE/bin/date" <<EOF
+#!/usr/bin/env bash
+# date stub: now is the fake clock; a date given with -d or -r is left to date.
+for a in "\$@"; do
+  case \$a in -d|--date|--date=*|-r|--reference|--reference=*) exec $(command -v date) "\$@" ;; esac
+done
+exec $(command -v date) -d "@\$(cut -d. -f1 "\$STUB_DIR/clock")" "\$@"
+EOF
+  chmod +x "$CASE/bin/trivy" "$CASE/bin/sleep" "$CASE/bin/date"
 }
 
 run_scan() {
   (
-    export PATH="$CASE/bin:$PATH" STUB_DIR FIX
+    export STUB_DIR FIX STUB_APP_KEY="$CASE/app/private-key"
+    python3 -I "$HERE/api_stub.py" 2> "$STUB_DIR/api_stub.err" &
+    stub=$!
+    for _ in $(seq 100); do [ -s "$STUB_DIR/port" ] && break; sleep 0.05; done
+    [ -s "$STUB_DIR/port" ] || { echo "test: api_stub.py did not start"; cat "$STUB_DIR/api_stub.err"; exit 99; }
+    api="http://127.0.0.1:$(cat "$STUB_DIR/port")"
+    export PATH="$CASE/bin:$PATH"
     export VULN_SCAN_HOME="$MANIFESTS"
     export WORK_DIR="$CASE/work"
     export SA_DIR="$CASE/sa"
@@ -140,13 +131,21 @@ run_scan() {
     # The VEX statements are sealed in the cluster (Chorde#43); the scan reads
     # whatever file VEX_FILE names, here one with no statement.
     export VEX_FILE="$FIX/empty.openvex.json"
-    export KUBE_API="https://kube.test"
-    export GITHUB_API="https://api.github.test"
+    export KUBE_API="$api"
+    export GITHUB_API="$api"
     export POLL_INTERVAL=0
     sh "$MANIFESTS/scan.sh"
+    rc=$?
+    kill "$stub" 2>/dev/null; wait "$stub" 2>/dev/null
+    exit "$rc"
   ) > "$CASE/out.log" 2>&1
   RC=$?
 }
+
+# The requests api_stub.py served for one call (token, head, upload, status,
+# pods), one per line: <fake time> <call> <method> <path> <bearer> <answer>.
+requests() { awk -v c="$1" '$2 == c' "$STUB_DIR/requests.log" 2>/dev/null; }
+export -f requests
 
 uploaded_sarif() { jq -r .sarif "$STUB_DIR/upload.json" | base64 -d | gunzip; }
 export -f uploaded_sarif
@@ -243,9 +242,9 @@ echo "upload: Code Scanning on Chorde main"
 check "uploads against main's head commit" \
   jq -e '.commit_sha == "0123456789abcdef0123456789abcdef01234567" and .ref == "refs/heads/main"' "$STUB_DIR/upload.json"
 check "uploads to SafeChord/Chorde" \
-  grep -q 'repos/SafeChord/Chorde/code-scanning/sarifs ' "$STUB_DIR/curl.calls"
+  bash -c 'requests upload | grep -q " /repos/SafeChord/Chorde/code-scanning/sarifs "'
 check "authenticates with an installation token minted from the App key" \
-  bash -c 'grep "code-scanning/sarifs" "$1" | grep -q "Bearer ghs_stub"' _ "$STUB_DIR/curl.calls"
+  bash -c 'requests upload | awk "{print \$5}" | grep -q "^ghs_stub"'
 check "waits for processing to finish" \
   test "$(cat "$STUB_DIR/polls")" -ge 2
 check "the analysis has a fixed category, so each upload replaces the last" \
@@ -276,6 +275,108 @@ check "no image listed -> non-zero, nothing uploaded (an empty list is not a cle
 
 new_case; STUB_MAP=$STD_MAP STUB_PENDING_POLLS=1000 run_scan
 check "processing never finishes -> non-zero" test "$RC" != 0
+# ---------------------------------------------------------------------------
+echo "retry: a GitHub error that may pass does not cost the week (Chorde#56)"
+# ---------------------------------------------------------------------------
+# Docs: safechord.chorde.k3han.operations.md §4. Each of the four calls to
+# GitHub is retried with growing waits on a 5xx, a 429 or a failed connection,
+# for up to an hour, with a fresh token once the old one nears expiry; any other
+# answer fails the run at once. Faults and time are api_stub.py's (see there).
+
+CALLS="token head upload status"
+# What the last log line must contain to name the call that failed.
+names_call() { # names_call <call> <line>
+  case $1 in
+    token)  grep -qi 'token' <<<"$2" ;;
+    head)   grep -qi 'head' <<<"$2" ;;
+    upload) grep -qi 'upload' <<<"$2" && ! grep -qi 'status' <<<"$2" ;;
+    status) grep -qi 'status' <<<"$2" ;;
+  esac
+}
+export -f names_call
+last_line() { grep -v '^[[:space:]]*$' "$CASE/out.log" | tail -n 1; }
+# Fake seconds from the call's first request to the end of the run.
+elapsed() { # elapsed <call>
+  local first; first=$(requests "$1" | head -n 1 | cut -d' ' -f1)
+  echo $(( $(cut -d. -f1 "$STUB_DIR/clock") - ${first:-0} ))
+}
+# Fake seconds from the call's first request to its last.
+span() { requests "$1" | awk 'NR == 1 { f = $1 } { l = $1 } END { print l - f + 0 }'; }
+# The fake seconds between one request of the call and the next, one per line.
+gaps() { requests "$1" | awk 'NR > 1 { print $1 - prev } { prev = $1 }'; }
+# The longest wait is at least four times the first: the waits grow.
+waits_grow() { # waits_grow <call>
+  local first longest
+  first=$(gaps "$1" | head -n 1); longest=$(gaps "$1" | sort -n | tail -n 1)
+  [ -n "$first" ] && [ "$longest" -ge $((4 * first)) ] && [ "$longest" -gt 0 ]
+}
+export -f gaps waits_grow
+completed() { # the run exits zero with its upload processed
+  test "$RC" = 0 && requests status | grep -q ' 200$' && test -s "$STUB_DIR/upload.json"
+}
+
+new_case; STUB_MAP=$STD_MAP run_scan
+baseline_alerts=$(uploaded_alerts)
+
+for call in $CALLS; do
+  # A 5xx, a 429 and a dropped connection, a few times, then the answer.
+  new_case; STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"seq\": [502, 429, \"drop\", 503]}}" run_scan
+  check "$call: 502, 429, a dropped connection and 503, then served -> the run completes" completed
+  [ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+  check "  ... asking again after each, until served" \
+    bash -c 'test "$(requests "$1" | head -n 5 | awk "{print \$6}" | tr "\n" " ")" = "502 429 drop 503 $2 "' _ "$call" \
+    "$(case $call in token) echo 201 ;; upload) echo 202 ;; *) echo 200 ;; esac)"
+  if [ "$call" = upload ]; then
+    check "  ... and the analysis it uploads is the one the scan found" test "$(uploaded_alerts)" = "$baseline_alerts"
+  fi
+
+  # GitHub down for half an hour: within the hour, the run still completes.
+  new_case; STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"for\": 1800, \"with\": 503}}" run_scan
+  check "$call: 503 for half an hour, then served -> the run completes" completed
+  [ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+
+  # GitHub down for good: the run gives up within about an hour, well inside
+  # the Job's activeDeadlineSeconds (7200), and says what failed.
+  new_case; STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"with\": 502}}" run_scan
+  line=$(last_line)
+  check "$call: 502 for good -> non-zero" test "$RC" != 0
+  check "  ... within an hour and ten minutes of the first failure (took $(elapsed "$call") s)" \
+    test "$(elapsed "$call")" -le 4200
+  check "  ... having kept asking for more than half an hour (asked $(requests "$call" | wc -l) times over $(span "$call") s)" \
+    test "$(span "$call")" -ge 1800
+  check "  ... with waits that grow (first $(gaps "$call" | head -n 1) s, longest $(gaps "$call" | sort -n | tail -n 1) s)" \
+    waits_grow "$call"
+  check "  ... the last log line names the call and the 502" \
+    bash -c 'names_call "$1" "$2" && grep -qw 502 <<<"$2"' _ "$call" "$line"
+  check "  ... nothing processed" bash -c '! requests status | grep -q " 200$"'
+
+  # Any other 4xx is not an error that may pass: no second request.
+  new_case; STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"with\": 422}}" run_scan
+  check "$call: 422 -> non-zero, without asking again" \
+    bash -c 'test "$1" != 0 && test "$(requests "$2" | wc -l)" = 1' _ "$RC" "$call"
+done
+
+new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"upload": {"with": "drop"}}' run_scan
+line=$(last_line)
+check "upload: the connection drops for good -> non-zero, the last log line names the call and curl's error" \
+  bash -c 'test "$1" != 0 && names_call upload "$2" && grep -qiE "empty reply|\b52\b" <<<"$2"' _ "$RC" "$line"
+
+new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"head": {"seq": [502, 404]}}' run_scan
+check "head: 502, then 404 -> non-zero, without asking a third time" \
+  bash -c 'test "$1" != 0 && test "$(requests head | wc -l)" = 2' _ "$RC"
+
+# The installation token lives an hour (api_stub.py answers 401 to one past its
+# expires_at, as GitHub does). Retries that outlast it go on with a fresh one.
+new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"head": {"for": 3000, "with": 503}, "upload": {"for": 1200, "with": 502}}' run_scan
+check "head down 50 min, then upload down 20 min -> the run completes" completed
+[ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+check "  ... and no call met an expired token (no 401)" bash -c '! grep -q " 401$" "$1"' _ "$STUB_DIR/requests.log"
+
+new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"head": {"for": 2400, "with": 502}, "status": {"for": 1500, "with": 503}}' run_scan
+check "head down 40 min, then the status poll down 25 min -> the run completes" completed
+[ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+check "  ... and no call met an expired token (no 401)" bash -c '! grep -q " 401$" "$1"' _ "$STUB_DIR/requests.log"
+
 
 # ---------------------------------------------------------------------------
 echo "manifests: kubectl kustomize $MANIFESTS"
