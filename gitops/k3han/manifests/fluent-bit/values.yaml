@@ -31,6 +31,7 @@ serviceAccount:
   create: true
   annotations: {}
   name:
+  automountServiceAccountToken:
 
 rbac:
   create: true
@@ -108,7 +109,7 @@ service:
   # nodePort: 30020
   # clusterIP: 172.16.10.1
   annotations: {}
-  #   prometheus.io/path: "/api/v1/metrics/prometheus"
+  #   prometheus.io/path: "/api/v2/metrics/prometheus"
   #   prometheus.io/port: "2020"
   #   prometheus.io/scrape: "true"
   externalIPs: []
@@ -205,7 +206,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /api/v1/health
+    path: /api/v2/health
     port: http
 
 resources: {}
@@ -244,6 +245,9 @@ autoscaling:
     # List of resources that the vertical pod autoscaler can control. Defaults to cpu and memory
     controlledResources: []
 
+    # Values that the vertical pod autoscaler can control. Allowed values are RequestsAndLimits and RequestsOnly. Default is RequestsAndLimits.
+    controlledValues:
+
     # Define the max allowed resources for the pod
     maxAllowed: {}
     # cpu: 200m
@@ -252,6 +256,9 @@ autoscaling:
     minAllowed: {}
     # cpu: 200m
     # memory: 100Mi
+
+    # Name of the VPA recommender that will provide recommendations for vertical scaling.
+    recommender: default
 
     updatePolicy:
       # Specifies whether recommended updates are applied when a Pod is started and whether recommended updates
@@ -516,9 +523,19 @@ hotReload:
   enabled: false
   image:
     repository: ghcr.io/jimmidyson/configmap-reload
-    tag: v0.14.0
+    tag: v0.15.0
     digest:
     pullPolicy: IfNotPresent
   resources: {}
   extraWatchVolumes: []
+  securityContext:
+    privileged: false
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    capabilities:
+      drop:
+        - ALL
 

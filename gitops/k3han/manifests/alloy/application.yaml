@@ -17,7 +17,7 @@ spec:
     
     - repoURL: https://grafana.github.io/helm-charts
       chart: alloy
-      targetRevision: 1.5.3
+      targetRevision: 1.15.0
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/alloy/values-custom.yaml

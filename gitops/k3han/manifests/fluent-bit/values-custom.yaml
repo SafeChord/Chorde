@@ -31,12 +31,6 @@ config:
         Name k8s-tag-parser
         Format regex
         Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
-    [PARSER]
-        Name cri
-        Format regex
-        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]+) (?<message>.*)$
-        Time_Key time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 
   inputs: |
     [INPUT]

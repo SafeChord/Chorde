@@ -17,7 +17,7 @@ spec:
     
     - repoURL: https://prometheus-community.github.io/helm-charts
       chart: kube-prometheus-stack
-      targetRevision: 80.14.4
+      targetRevision: 92.21.1
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/prometheus/values-custom.yaml

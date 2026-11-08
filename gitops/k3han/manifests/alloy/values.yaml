@@ -18,6 +18,9 @@ global:
     # -- Optional set of global image pull secrets.
     pullSecrets: []
 
+    # -- Global image pull policy to apply to all containers. Overrides `image.pullPolicy` and `configReloader.image.pullPolicy`.
+    pullPolicy: ""
+
   # -- Security context to apply to the Grafana Alloy pod.
   podSecurityContext: {}
 
@@ -90,12 +93,21 @@ alloy:
   # -- Maps all the keys on a ConfigMap or Secret as environment variables. https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#envfromsource-v1-core
   envFrom: []
 
+  # -- Override the entrypoint command for the Alloy container. When set, this
+  # replaces the image's default entrypoint (the chart-provided `args` are still
+  # passed). Useful on Windows where the binary lives at a different path, for
+  # example `["C:\\Program Files\\GrafanaLabs\\Alloy\\alloy.exe"]`. Leave empty
+  # to use the image's default entrypoint.
+  command: []
+
   # -- Extra args to pass to `alloy run`: https://grafana.com/docs/alloy/latest/reference/cli/run/
   extraArgs: []
 
   # -- Extra ports to expose on the Alloy container.
+  # If `service.type` is `NodePort`, each item may set `nodePort` to choose the Service NodePort for that port.
   extraPorts: []
   # - name: "faro"
+  #   nodePort: 31129
   #   port: 12347
   #   targetPort: 12347
   #   protocol: "TCP"
@@ -124,6 +136,14 @@ alloy:
   # -- Resource requests and limits to apply to the Grafana Alloy container.
   resources: {}
 
+  # -- Resize policy for the Grafana Alloy container. Controls whether an
+  # in-place resize of CPU or memory restarts the container.
+  resizePolicy: []
+    # - resourceName: cpu
+    #   restartPolicy: NotRequired
+    # - resourceName: memory
+    #   restartPolicy: RestartContainer
+
   # -- Set lifecycle hooks for the Grafana Alloy container.
   lifecycle: {}
     # preStop:
@@ -143,6 +163,10 @@ image:
   # -- (string) Grafana Alloy image tag. When empty, the Chart's appVersion is
   # used.
   tag: null
+  # -- Use a distroless version of Grafana Alloy image (experimental).
+  #
+  # Appends "-distroless" to the image tag (or the chart's appVersion when tag is empty). Ignored when image.digest is set.
+  distroless: false
   # -- Grafana Alloy image's SHA256 digest (either in format "sha256:XYZ" or "XYZ"). When set, will override `image.tag`.
   digest: null
   # -- Grafana Alloy image pull policy.
@@ -239,9 +263,11 @@ configReloader:
     # -- Repository to get config reloader image from.
     repository: prometheus-operator/prometheus-config-reloader
     # -- Tag of image to use for config reloading.
-    tag: v0.81.0
+    tag: v0.94.2@sha256:a1897c67478bc23434534e91ad3855280771196b1daf17144db9dbcb655bef71
     # -- SHA256 digest of image to use for config reloading (either in format "sha256:XYZ" or "XYZ"). When set, will override `configReloader.image.tag`
     digest: ""
+    # -- Config reloader image pull policy.
+    pullPolicy: IfNotPresent
   # -- Override the args passed to the container.
   customArgs: []
   # -- Resource requests and limits to apply to the config reloader container.
@@ -249,8 +275,21 @@ configReloader:
     requests:
       cpu: "10m"
       memory: "50Mi"
+  # -- Resize policy for the config reloader container. Controls whether an
+  # in-place resize of CPU or memory restarts the container.
+  resizePolicy: []
   # -- Security context to apply to the Grafana configReloader container.
-  securityContext: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
 
 controller:
   # -- Type of controller to use for deploying Grafana Alloy in the cluster.
@@ -282,9 +321,15 @@ controller:
   # -- Configures the DNS policy for the pod. https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy
   dnsPolicy: ClusterFirst
 
+  # -- Configures the DNS config for the pod. https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+  dnsConfig: {}
+
   # -- Termination grace period in seconds for the Grafana Alloy pods.
   # The default value used by Kubernetes if unspecifed is 30 seconds.
   terminationGracePeriodSeconds: null
+
+  # -- The maximum number of revisions that will be maintained in the Controllers's revision history. The history consists of all revisions not represented by a currently applied reversion.
+  revisionHistoryLimit: 10
 
   # -- Update strategy for updating deployed Pods.
   updateStrategy: {}
@@ -360,6 +405,19 @@ controller:
     horizontal:
       # -- Enables the Horizontal Pod Autoscaler for the controller.
       enabled: false
+      # -- When true, the chart omits `spec.replicas` from the workload AND does NOT
+      # render its own HorizontalPodAutoscaler. Use this when an external controller
+      # (e.g. KEDA, a hand-written HPA, or another scaler) owns replicas for the Alloy
+      # workload. Mutually exclusive with `horizontal.enabled`. When set, all other
+      # `controller.autoscaling.horizontal.*` fields are ignored.
+      #
+      # Upgrade note: switching this from `false` to `true` on an existing release
+      # triggers a one-time single-cycle dip to 1 replica on the next `helm upgrade`
+      # (Helm removes the `replicas` field via `{"spec":{"replicas":null}}`, which
+      # Kubernetes interprets as "reset to default"). The external HPA corrects this
+      # within its next polling interval; users with `minReplicaCount > 1` are
+      # restored within ~30s under KEDA defaults. Plan upgrades accordingly.
+      externalHPA: false
 
       # -- The lower limit for the number of replicas to which the autoscaler can scale down.
       minReplicas: 1
@@ -477,6 +535,10 @@ service:
   clusterIP: ''
   # -- Value for internal traffic policy. 'Cluster' or 'Local'
   internalTrafficPolicy: Cluster
+  # -- Value for external traffic policy. 'Cluster' or 'Local'
+  externalTrafficPolicy: Cluster
+  # -- Value for traffic distribution. 'PreferSameNode' or 'PreferSameZone' (k8s >= 1.34)
+  trafficDistribution: ""
   annotations: {}
     # cloud.google.com/load-balancer-type: Internal
 

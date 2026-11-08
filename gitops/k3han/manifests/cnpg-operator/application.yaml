@@ -17,7 +17,7 @@ spec:
 
     - repoURL: https://cloudnative-pg.github.io/charts
       chart: cloudnative-pg
-      targetRevision: 0.27.0
+      targetRevision: 0.29.1
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/cnpg-operator/values-custom.yaml

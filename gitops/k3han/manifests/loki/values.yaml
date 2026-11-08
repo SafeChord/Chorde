@@ -57,6 +57,8 @@ imagePullSecrets: []
 # - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
+# -- Labels to be added to resources
+commonLabels: {}
 ######################################################################################################################
 #
 # Base Loki Configs including kubernetes configurations and configurations for Loki itself,
@@ -86,7 +88,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.7
+    tag: 3.6.11
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -106,6 +108,7 @@ loki:
   # -- The SecurityContext for Loki pods
   podSecurityContext:
     fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001
@@ -402,6 +405,10 @@ loki:
     grpc_listen_port: 9095
     http_server_read_timeout: 600s
     http_server_write_timeout: 600s
+  service:
+    # -- trafficDistribution for services
+    # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution
+    trafficDistribution: ""
   # -- Limits config
   limits_config:
     reject_old_samples: true
@@ -416,7 +423,7 @@ loki:
   commonConfig:
     path_prefix: /var/loki
     replication_factor: 3
-    # -- The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address.
+    # -- The gRPC address of the compactor. The use of compactor_grpc_address is preferred over compactor_address.
     # If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.
     compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
@@ -622,10 +629,12 @@ loki:
 
 # -- Configuration for running Enterprise Loki
 enterprise:
-  # Enable enterprise features, license must be provided
+  # Enterprise features are disabled by default.
+  # Set to `true` to deploy Grafana Enterprise Logs (GEL) with a valid license via
+  # `enterprise.license.contents` or `enterprise.useExternalLicense`/`enterprise.externalLicenseName`.
   enabled: false
   # Default version of GEL to deploy
-  version: 3.5.4
+  version: 3.6.16
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -667,7 +676,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.4
+    tag: 3.6.16
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -680,9 +689,13 @@ enterprise:
   canarySecret: null
   # -- Configuration for `provisioner` target
   # Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.
+  # The provisioner is disabled by default because it requires an out-of-band admin token secret
+  # (created via GEL `tokengen`) referenced by `enterprise.adminToken.secret`. After creating that
+  # secret, set both `enterprise.adminToken.secret` and `enterprise.provisioner.enabled: true`.
+  # See production/helm/loki/docs/examples/enterprise/README.md for the full procedure.
   provisioner:
     # -- Whether the job should be part of the deployment
-    enabled: true
+    enabled: false
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
     # -- Hook type(s) to customize when the job runs.  defaults to post-install
@@ -690,7 +703,7 @@ enterprise:
     # -- url of the admin api to use for the provisioner
     apiUrl: '{{ include "loki.address" . }}'
     # -- Additional tenants to be created. Each tenant will get a read and write policy
-    # and associated token. Tenant must have a name and a namespace for the secret containting
+    # and associated token. Tenant must have a name and a namespace for the secret containing
     # the token to be created in. For example
     # additionalTenants:
     #   - name: loki
@@ -828,6 +841,8 @@ lokiCanary:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Liveness probe
+  livenessProbe:
   # -- Readiness probe
   readinessProbe:
     httpGet:
@@ -835,6 +850,8 @@ lokiCanary:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- Startup probe
+  startupProbe:
   # -- Update strategy for the `loki-canary` Daemonset pods
   updateStrategy:
     type: RollingUpdate
@@ -1165,6 +1182,8 @@ gateway:
     annotations: {}
     # -- Labels for gateway service
     labels: {}
+    # -- trafficDistribution for gateway service
+    trafficDistribution: ""
   # Gateway ingress configuration
   ingress:
     # -- Specifies whether an ingress for the gateway should be created
@@ -1303,12 +1322,16 @@ enterpriseGateway:
   # -- update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -1316,7 +1339,7 @@ enterpriseGateway:
   env: []
   # -- Configure optional initContainers
   initContainers: []
-  # -- Conifgure optional extraContainers
+  # -- Configure optional extraContainers
   extraContainers: []
   # -- Additional volumes for Pods
   extraVolumes: []
@@ -1472,6 +1495,8 @@ singleBinary:
     labels: {}
     # -- Service Type for single binary Service
     type: "ClusterIP"
+    # -- trafficDistribution single binary Service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service
@@ -1606,6 +1631,8 @@ write:
     labels: {}
     # -- Service Type for write Service
     type: "ClusterIP"
+    # -- trafficDistribution for write service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -1653,6 +1680,8 @@ write:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
@@ -1681,6 +1710,10 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1740,6 +1773,8 @@ read:
     labels: {}
     # -- Service Type for read Service
     type: ClusterIP
+    # -- trafficDistribution for read service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
@@ -1766,6 +1801,8 @@ read:
   resources: {}
   # -- liveness probe settings for read pods. If empty, applies no livenessProbe
   livenessProbe: {}
+    # -- startup probe for the read pods. If empty, applies no startupProbe
+  startupProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Use the host's user namespace in the read pods.
@@ -1784,6 +1821,8 @@ read:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
@@ -1808,6 +1847,10 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1867,6 +1910,8 @@ backend:
     labels: {}
     # -- Service type for backend Service
     type: ClusterIP
+    # -- trafficDistribution for backend Service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the backend
   targetModule: "backend"
   # -- Additional CLI args for the backend
@@ -1905,6 +1950,8 @@ backend:
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
@@ -1933,6 +1980,10 @@ backend:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -2004,11 +2055,11 @@ ingester:
   # -- Annotations for ingester pods
   podAnnotations: {}
   # -- The name of the PriorityClass for ingester pods
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
-  # -- Annotations for ingestor service
+  # -- Annotations for ingester service
   serviceAnnotations: {}
-  # -- Service type for ingestor service
+  # -- Service type for ingester service
   serviceType: "ClusterIP"
   # -- Additional CLI args for the ingester
   extraArgs: []
@@ -2066,6 +2117,8 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- UpdateStrategy for the ingester StatefulSets.
   updateStrategy:
     # -- One of  'OnDelete' or 'RollingUpdate'
@@ -2092,6 +2145,10 @@ ingester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2102,7 +2159,9 @@ ingester:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
-  # -- Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone.
+  # -- trafficDistribution for ingester service
+  trafficDistribution: ""
+  # -- Enabling zone awareness on ingesters will create 3 StatefulSets where all writes will send a replica to each zone.
   # This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single
   # zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy
   # of the data).
@@ -2380,6 +2439,8 @@ querier:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for querier service
+  trafficDistribution: ""
 # -- Configuration for the query-frontend
 queryFrontend:
   # -- Number of replicas for the query-frontend
@@ -2485,6 +2546,8 @@ queryFrontend:
   # -- Enable load balancer port for query-frontend
   loadBalancer:
     enabled: true
+  # -- trafficDistribution for query-frontend service
+  trafficDistribution: ""
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.
@@ -2559,6 +2622,8 @@ queryScheduler:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- trafficDistribution for query-scheduler service
+  trafficDistribution: ""
 # -- Configuration for the index-gateway
 indexGateway:
   # -- Number of replicas for the index-gateway
@@ -2650,6 +2715,10 @@ indexGateway:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for index gateway PVCs
     annotations: {}
     # -- Labels for index gateway PVCs
@@ -2661,6 +2730,8 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- trafficDistribution for index-gateway service
+  trafficDistribution: ""
   # -- UpdateStrategy for the indexGateway StatefulSet.
   updateStrategy:
     # -- One of  'OnDelete' or 'RollingUpdate'
@@ -2724,10 +2795,12 @@ compactor:
   extraVolumeMounts: []
   # -- Volumes to add to the compactor pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for compactor pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for compactor pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the compactor
   resources: {}
   # -- Containers to add to the compactor pods
@@ -2760,6 +2833,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for compactor PVCs
         annotations: {}
         # -- Labels for compactor PVCs
@@ -2836,11 +2913,11 @@ bloomGateway:
   extraVolumeMounts: []
   # -- Volumes to add to the bloom-gateway pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- startup probe settings for ingester pods. If empty, use `loki.startupProbe`
+  # -- startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe`
   startupProbe: {}
   # -- Resource requests and limits for the bloom-gateway
   resources: {}
@@ -2879,6 +2956,10 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2950,11 +3031,11 @@ bloomPlanner:
   extraVolumeMounts: []
   # -- Volumes to add to the bloom-planner pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  # -- startup probe settings for bloom-planner pods. If empty use `loki.startupProbe`
   startupProbe: {}
   # -- Resource requests and limits for the bloom-planner
   resources: {}
@@ -2989,6 +3070,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for bloom-planner PVCs
         annotations: {}
         # -- Labels for bloom planner PVCs
@@ -3166,10 +3251,12 @@ patternIngester:
   extraVolumeMounts: []
   # -- Volumes to add to the pattern ingester pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for pattern ingester pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for pattern ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for pattern ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the pattern ingester
   resources: {}
   # -- Containers to add to the pattern ingester pods
@@ -3213,6 +3300,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for pattern ingester PVCs
         annotations: {}
         # -- Labels for pattern ingester PVCs
@@ -3324,6 +3415,10 @@ ruler:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for ruler PVCs
     annotations: {}
     # -- Labels for ruler PVCs
@@ -3524,7 +3619,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.3
+    tag: v0.15.4
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3581,6 +3676,8 @@ resultsCache:
   port: 11211
   # -- Amount of memory allocated to results-cache for object storage (in MB).
   allocatedMemory: 1024
+  # -- Amount of cpu allocated to results-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item results-cache for memcached (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3667,6 +3764,10 @@ resultsCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     # -- PVC additional labels
@@ -3692,6 +3793,8 @@ chunksCache:
   port: 11211
   # -- Amount of memory allocated to chunks-cache for object storage (in MB).
   allocatedMemory: 8192
+  # -- Amount of cpu allocated to chunks-cache for object storage (in integer or millicores).
+  allocatedCPU: 500m
   # -- Maximum item memory for chunks-cache (in MB).
   maxItemMemory: 5
   # -- Maximum number of connections allowed
@@ -3778,6 +3881,10 @@ chunksCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     labels: {}
@@ -3785,7 +3892,7 @@ chunksCache:
   l2:
     # -- Append to the name of the resources to make names different for l1 and l2
     suffix: "l2"
-    # -- The age of chunks should be transfered from l1 cache to l2
+    # -- The age of chunks should be transferred from l1 cache to l2
     # 4 days
     l2ChunkCacheHandoff: 345600s
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
@@ -3806,6 +3913,8 @@ chunksCache:
     port: 11211
     # -- Amount of memory allocated to chunks-cache-l2 for object storage (in MB).
     allocatedMemory: 8192
+    # -- Amount of cpu allocated to chunks-cache-l2 for object storage (in integer or millicores).
+    allocatedCPU: 500m
     # -- Maximum item memory for chunks-cache-l2 (in MB).
     maxItemMemory: 5
     # -- Maximum number of connections allowed
@@ -3892,6 +4001,10 @@ chunksCache:
       # If empty or set to null, no storageClassName spec is
       # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
       storageClass: null
+      # -- Volume attributes class name to be used.
+      # If empty or set to null, no volumeAttributesClassName spec is set.
+      # Requires Kubernetes 1.31
+      volumeAttributesClassName: null
       # -- Volume mount path
       mountPath: /data
       labels: {}
@@ -3927,6 +4040,17 @@ rollout_operator:
 # -- Configuration for the minio subchart
 minio:
   enabled: false
+  # Override the upstream MinIO, Inc. images with the Pigsty (pgsty) community
+  # fork (renamed from "minio" to "silo") to mitigate the unresolved CVE in
+  # the abandoned MinIO images. See https://github.com/pgsty/silo for details.
+  image:
+    repository: docker.io/pgsty/silo
+    tag: RELEASE.2026-09-03T13-18-01Z
+    pullPolicy: IfNotPresent
+  mcImage:
+    repository: docker.io/pgsty/mc
+    tag: RELEASE.2026-09-13T00-00-00Z
+    pullPolicy: IfNotPresent
   replicas: 1
   # Minio requires 2 to 16 drives for erasure code (drivesPerNode * replicas)
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
@@ -3997,10 +4121,11 @@ extraObjects: null
 
 sidecar:
   image:
+    registry: docker.io
     # -- The Docker registry and image for the k8s sidecar
-    repository: docker.io/kiwigrid/k8s-sidecar
+    repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.10
+    tag: 2.5.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -4022,6 +4147,8 @@ sidecar:
     allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
+  # -- Set to true to disable strict x509 verification for kube api calls.
+  disableX509StrictVerification: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.
   enableUniqueFilenames: false
   # -- Readiness probe definition. Probe is disabled on the sidecar by default.
