@@ -17,6 +17,14 @@ Docs safechord.chorde.md section 4, item 1:
 
 Exits 0 when both hold, 1 with one line per finding otherwise. Needs
 python3 with PyYAML, and helm with network access to the chart repositories.
+
+A chart download that fails the way a passing outage does (an HTTP 5xx or
+429, a failed connection, a timeout) is retried, waiting 5 s and doubling,
+for up to 90 s from the first try, then is a finding with the last error; any
+other error is a finding at once (Chorde#63). A helm run that hangs can take
+helm's own 120 s client timeout, so a chart takes at most 90 s plus its last
+run. CHART_PINS_RETRY_WINDOW and CHART_PINS_RETRY_FIRST_WAIT override the two
+numbers, in seconds.
 """
 import difflib
 import fnmatch
@@ -25,6 +33,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 import yaml
 
@@ -32,6 +41,17 @@ import yaml
 DEPLOYED_OUTSIDE_STAGES = {"argocd"}
 
 DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+RETRY_WINDOW = float(os.environ.get("CHART_PINS_RETRY_WINDOW", 90))
+RETRY_FIRST_WAIT = float(os.environ.get("CHART_PINS_RETRY_FIRST_WAIT", 5))
+# helm's last stderr line for an error that may pass: an HTTP status, as helm
+# prints it for a chart repository (": 504 Gateway Timeout") or an OCI
+# registry ("status code 503"), or a connection that failed or timed out.
+TRANSIENT = re.compile(
+    r"(: |status code:? )(429|5\d\d)\b"
+    r"|connection refused|connection reset|no such host|network is unreachable"
+    r"|i/o timeout|TLS handshake timeout|context deadline exceeded|Client\.Timeout"
+    r"|unexpected EOF|: EOF$|broken pipe|stream error|server closed",
+    re.IGNORECASE)
 IMAGE_KEY = re.compile(r"^(image|imagename)$|_image$", re.IGNORECASE)
 DIGEST_KEYS = ("digest", "sha")
 
@@ -91,13 +111,26 @@ def helm_show_values(repo_url, chart, version):
         cmd = ["helm", "show", "values", "--repo", repo_url, chart, "--version", version]
     else:  # ArgoCD writes an OCI registry without its oci:// scheme
         cmd = ["helm", "show", "values", f"oci://{repo_url.rstrip('/')}/{chart}", "--version", version]
-    # helm reads a chart name that matches a directory under the working
-    # directory as that local chart, so it runs in an empty one.
-    with tempfile.TemporaryDirectory() as empty:
-        out = subprocess.run(cmd, capture_output=True, text=True, cwd=empty)
-    if out.returncode != 0:
-        return None, " ".join(cmd) + ": " + out.stderr.strip().splitlines()[-1]
-    return out.stdout, None
+    started, wait, runs = time.monotonic(), RETRY_FIRST_WAIT, 0
+    while True:
+        runs += 1
+        # helm reads a chart name that matches a directory under the working
+        # directory as that local chart, so it runs in an empty one.
+        with tempfile.TemporaryDirectory() as empty:
+            out = subprocess.run(cmd, capture_output=True, text=True, cwd=empty)
+        if out.returncode == 0:
+            return out.stdout, None
+        lines = out.stderr.strip().splitlines()
+        err = " ".join(cmd) + ": " + (lines[-1] if lines else f"exit status {out.returncode}")
+        if not TRANSIENT.search(err):
+            return None, err
+        now = time.monotonic()
+        left = started + RETRY_WINDOW - now
+        if left <= 0:
+            return None, f"{err} (still failing after {runs} runs over {now - started:.0f} s)"
+        # The last wait is cut to the window and ends in one more run.
+        time.sleep(min(wait, left))
+        wait *= 2
 
 
 def check_chart_defaults(env_dir, services):
