@@ -6,6 +6,18 @@ global:
   image:
     # -- Global image registry of KEDA components
     registry: null
+  # -- DNS config for KEDA components
+  dnsConfig: {}
+  # nameservers:
+  #   - 1.2.3.4
+  # searches:
+  #   - ns1.svc.cluster-domain.example
+  #   - my.dns.search.suffix
+  # options:
+  #   - name: ndots
+  #     value: "1"
+  #   - name: attempts
+  #     value: "3"
 
 image:
   keda:
@@ -50,22 +62,57 @@ crds:
 # -- Defines Kubernetes namespaces to watch to scale their workloads. Default watches all namespaces
 watchNamespace: ""
 
+# -- Restricts the operator to reconcile only ScaledObjects and ScaledJobs (and their derived
+# HorizontalPodAutoscalers) matching the given Kubernetes label selector. Default (empty) means
+# no label-based filtering. Mirrors `watchNamespace`, but filters by label instead of by namespace.
+# Examples: "environment=production", "tier in (gold,silver)", "!canary"
+watchLabelSelector: ""
+
+# -- Restricts the operator to reconcile only TriggerAuthentications and ClusterTriggerAuthentications
+# matching the given Kubernetes label selector. Default (empty) means no label-based filtering.
+# Decoupled from `watchLabelSelector` so a single cluster-scoped ClusterTriggerAuthentication can be
+# shared across operators scoped to different label selectors.
+watchLabelSelectorForTriggerauth: ""
+
 # -- Name of secret to use to pull images to use to pull Docker images
 imagePullSecrets: []
 
 networkPolicy:
   # -- Enable network policies
   enabled: false
-  # -- Flavor of the network policies (cilium)
+  # -- Flavor of the network policies (cilium, kubernetes)
   flavor: "cilium"
   # -- Allow use of extra egress rules for cilium network policies
   cilium:
     operator:
       extraEgressRules: []
+  # -- Allow use of extra egress rules for kubernetes network policies
+  kubernetes:
+    operator:
+      extraEgressRules: []
+    metricsServer:
+      extraEgressRules: []
+    webhooks:
+      extraEgressRules: []
 
 operator:
+  serviceAccountTokens:
+    # -- Token audience policy for Vault and boundServiceAccountToken. When configured as "legacy", it disables enforcement and cannot be combined with configured audiences.
+    mode: enforce-audience  # enforce-audience, legacy
+    # -- Approved audiences for extra token files; creates no mounts or minting defaults. Use audiences not accepted by kube-apiserver. Combined audience config.
+    additionalAllowedAudiences: []
+  # -- Optional endpoint filter, passed as KEDA_OUTBOUND_FILTER. Empty disables filtering. Max 64 KiB.
+  outboundFilter: {}
+  # Example policy (replace {} above):
+  #   hashiCorpVault:
+  #     mode: "off" # off, warn, or enforce
+  #     allowedEndpoints: [] # exact HTTP(S) origins; empty denies all in enforce mode
   # -- Name of the KEDA operator
   name: keda-operator
+  # -- Additional KEDA Operator container environment variables
+  env: []
+  # - name: ENV_NAME
+  #   value: 'ENV-VALUE'
   # -- ReplicaSets for this Deployment you want to retain (Default: 10)
   revisionHistoryLimit: 10
   # -- Capability to configure the number of replicas for KEDA operator.
@@ -76,6 +123,20 @@ operator:
   # --Disable response compression for k8s restAPI in client-go.
   # Disabling compression simply means that turns off the process of making data smaller for K8s restAPI in client-go for faster transmission.
   disableCompression: true
+  # -- Port for the gRPC Metrics Service endpoint that the KEDA operator binds to and the metrics server connects to.
+  metricsServiceTargetPort: 9666
+  # -- Leader election ID (Lease resource name) for the controller manager. Defaults to operator.keda.sh.
+  # Override to allow multiple independent KEDA operator deployments in the same namespace.
+  # leaderElectionID: "operator.keda.sh"
+  # -- DNS config for KEDA operator pod
+  dnsConfig: {}
+  # use ClusterFirstWithHostNet if `useHostNetwork: true` https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy
+  # -- Defined the DNS policy for the operator
+  dnsPolicy: ClusterFirst
+  # -- Enable operator to use host network
+  useHostNetwork: false
+  # -- (bool) Sets `hostUsers` on the KEDA operator pod. Leave unset to preserve the cluster default, `false` to run the pod in its own [user namespace](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/), or `true` to explicitly use the host user namespace.
+  hostUsers:
   # -- [Affinity] for pod scheduling for KEDA operator. Takes precedence over the `affinity` field
   affinity: {}
     # podAntiAffinity:
@@ -119,8 +180,22 @@ operator:
     timeoutSeconds: 1
     failureThreshold: 3
     successThreshold: 1
+  # -- Node selector for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/))
+  nodeSelector: {}
+  # -- Tolerations for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/))
+  tolerations: []
+  # -- Additional timeout beyond the ScaledObject or ScaledJob polling interval for Kubernetes API operations in scaling loops. Setting `0s` uses the polling interval as the timeout; the timeout cannot be disabled
+  kubernetesApiTimeout: 5s
 
 metricsServer:
+  # -- Enable KEDA metrics server.
+  enabled: true
+  # -- Enable registering KEDA metrics server as external metrics API resource.
+  registerAPIService: true
+  # -- Additional Metrics Adapter container environment variables
+  env: []
+  # - name: ENV_NAME
+  #   value: 'ENV-VALUE'
   # -- ReplicaSets for this Deployment you want to retain (Default: 10)
   revisionHistoryLimit: 10
   # -- Capability to configure the number of replicas for KEDA metric server.
@@ -134,8 +209,12 @@ metricsServer:
   # use ClusterFirstWithHostNet if `useHostNetwork: true` https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy
   # -- Defined the DNS policy for the metric server
   dnsPolicy: ClusterFirst
+  # -- DNS config for KEDA metrics server pod
+  dnsConfig: {}
   # -- Enable metric server to use host network
   useHostNetwork: false
+  # -- (bool) Sets `hostUsers` on the KEDA metrics server pod. Leave unset to preserve the cluster default, `false` to run the pod in its own [user namespace](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/), or `true` to explicitly use the host user namespace.
+  hostUsers:
   # -- [Affinity] for pod scheduling for Metrics API Server. Takes precedence over the `affinity` field
   affinity: {}
     # podAntiAffinity:
@@ -161,14 +240,24 @@ metricsServer:
     timeoutSeconds: 1
     failureThreshold: 3
     successThreshold: 1
+  # -- Node selector for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/))
+  nodeSelector: {}
+  # -- Tolerations for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/))
+  tolerations: []
 
 webhooks:
   # It also used to enable or disable webhook patching in the operator
   enabled: true
+  # -- Additional KEDA admission webhook container environment variables
+  env: []
+  # - name: ENV_NAME
+  #   value: 'ENV-VALUE'
   # -- Port number to use for KEDA admission webhooks. Default is 9443.
   port: ""
   # -- Port number to use for KEDA admission webhooks health probe
   healthProbePort: 8081
+  # -- DNS config for KEDA admission webhooks pod
+  dnsConfig: {}
   # -- Liveness probes for admission webhooks ([docs](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/))
   livenessProbe:
     initialDelaySeconds: 25
@@ -187,6 +276,8 @@ webhooks:
   timeoutSeconds: 10
   # -- Enable webhook to use host network, this is required on EKS with custom CNI
   useHostNetwork: false
+  # -- (bool) Sets `hostUsers` on the KEDA admission webhooks pod. Leave unset to preserve the cluster default, `false` to run the pod in its own [user namespace](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/), or `true` to explicitly use the host user namespace.
+  hostUsers:
   # -- Name of the KEDA admission webhooks
   name: keda-admission-webhooks
   # -- ReplicaSets for this Deployment you want to retain (Default: 10)
@@ -207,6 +298,11 @@ webhooks:
 
   # -- [Failure policy](https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#failure-policy) to use with KEDA admission webhooks
   failurePolicy: Ignore
+
+  # -- Node selector for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/))
+  nodeSelector: {}
+  # -- Tolerations for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/))
+  tolerations: []
 
 upgradeStrategy:
   # -- Capability to configure [Deployment upgrade strategy] for operator
@@ -373,6 +469,13 @@ grpcTLSCertsSecret: ""
 # will be mounted to the /vault path on the Pod
 hashiCorpVaultTLS: ""
 
+hashiCorpVault:
+  kubernetesAuth:
+    # -- Projected operator-token audience, also globally approved. Empty disables projection; does not configure named-SA minting. Use an audience not accepted by kube-apiserver.
+    audience: vault
+    # -- Mount directory for the Vault token (<path>/token). Empty/null disables projection and implicit file selection; explicit TA token paths remain usable.
+    projectedTokenMountPath: /var/run/secrets/keda-vault
+
 logging:
   operator:
     # -- Logging level for KEDA Operator.
@@ -387,12 +490,21 @@ logging:
     # -- If enabled, the stack traces will be also printed
     stackTracesEnabled: false
   metricServer:
-    # -- Logging level for Metrics Server.
+    # -- Logging level for Metrics Server (Deprecated).
     # allowed values: `0` for info, `4` for debug, or an integer value greater than 0, specified as string
     level: 0
-    # -- Logging stderrthreshold for Metrics Server
+    # -- Logging stderrthreshold for Metrics Server (Deprecated)
     # allowed values: 'DEBUG','INFO','WARN','ERROR','ALERT','EMERG'
     stderrthreshold: ERROR
+    # -- Zap Logging level for Metrics Server.
+    # allowed values: `debug`, `info`, `error`, or an integer value greater than 0, specified as string
+    zapLevel: info
+    # -- Zap Logging encoder for Metrics Server.
+    # allowed values: `json` or `console`
+    zapEncoder: console
+    # -- Zap logging time encoding for Metrics Server.
+    # allowed values are `epoch`, `millis`, `nano`, `iso8601`, `rfc3339` or `rfc3339nano`
+    zapTimeEncoding: rfc3339
   webhooks:
     # -- Logging level for KEDA Operator.
     # allowed values: `debug`, `info`, `error`, or an integer value greater than 0, specified as string
@@ -474,6 +586,11 @@ service:
   portHttpsTarget: 6443
   # -- Annotations to add the KEDA Metric Server service
   annotations: {}
+  # -- The minimum TLS version to use when KEDA components provide a TLS-enabled service.
+  minTlsVersion: "TLS13"
+  # -- The list of cipher suites to use when KEDA components provide a TLS-enabled service. When left empty or unset, the TLS implementation will provide a default list of cipher suites which are believed to be secure.
+  tlsCipherList: ""
+
 
 # We provides the default values that we describe in our docs:
 # https://keda.sh/docs/latest/operate/cluster/
@@ -509,6 +626,7 @@ resources:
 nodeSelector: {}
 # -- Tolerations for pod scheduling ([docs](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/))
 tolerations: []
+
 # -- HostAliases for pod networking ([docs](https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/))
 hostAliases: []
 
@@ -543,11 +661,19 @@ priorityClassName: ""
 http:
   # -- The default HTTP timeout to use for all scalers that use raw HTTP clients (some scalers use SDKs to access target services. These have built-in HTTP clients, and the timeout does not necessarily apply to them)
   timeout: 3000
+  # -- Maximum number of idle HTTP connections across all hosts. Zero means no limit.
+  maxIdleConns: 0
+  # -- Maximum number of idle HTTP connections to keep per host
+  maxIdleConnsPerHost: 1000
+  # -- Maximum time an idle HTTP connection remains in the pool. Must be greater than zero.
+  idleConnTimeout: 90s
   keepAlive:
     # -- Enable HTTP connection keep alive
     enabled: true
   # -- The minimum TLS version to use for all scalers that use raw HTTP clients (some scalers use SDKs to access target services. These have built-in HTTP clients, and this value does not necessarily apply to them)
   minTlsVersion: TLS12
+  # -- The list of cipher suites to use when making HTTP over TLS connections. When left empty or unset, the TLS implementation will provide a default list of cipher suites which are believed to be secure.
+  tlsCipherList: ""
 
 ## This setting lets you enable profiling for all of the components of KEDA and in the specific port you choose
 ## This can be useful when trying to investigate errors like memory leaks or CPU or even look at goroutines to understand better
@@ -569,13 +695,17 @@ profiling:
     # -- Expose profiling on a specific port
     port: 8084
 
-
-## Extra KEDA Operator and Metrics Adapter container arguments
+## Extra KEDA Operator, Metrics Adapter and Admission Webhooks container arguments
 extraArgs:
   # -- Additional KEDA Operator container arguments
   keda: {}
   # -- Additional Metrics Adapter container arguments
   metricsAdapter: {}
+  # -- Additional KEDA admission webhooks container arguments
+  webhooks: {}
+  # Example:
+  # webhooks:
+  #   cache-miss-to-direct-client: "true"
 
 # -- Additional environment variables that will be passed onto all KEDA components
 env: []
@@ -788,8 +918,8 @@ opentelemetry:
     # -- Uri of OpenTelemetry Collector to push telemetry to
     uri: ""
   operator:
-      # -- Enable pushing metrics to an OpenTelemetry Collector for operator
-      enabled: false
+    # -- Enable pushing metrics to an OpenTelemetry Collector for operator
+    enabled: false
 
 certificates:
   # -- Enables the self generation for KEDA TLS certificates inside KEDA operator
@@ -830,6 +960,11 @@ certificates:
       # -- Custom Issuer group. Required when generate: false
       group: cert-manager.io
   operator:
+    # -- Enable APIService patching by KEDA operator. Controls whether KEDA operator will inject the self-generated TLS certificate into the APIService used by KEDA Metrics API Server.
+    # Only takes effect when certificates.autoGenerated is true and certificates.certManager.enabled is false.
+    # WARNING: If metricsServer.enabled is true and you disable this, you must ensure the APIService CA bundle is injected by an alternative mechanism (e.g. external controller, manual patching), otherwise the metrics API will fail TLS verification.
+    # apiServicePatching:
+    #   enabled: false
     # -- Location(s) of CA files for authentication of external TLS connections such as TLS-enabled metrics sources
     # caDirs:
     # - /custom/ca
@@ -850,10 +985,15 @@ permissions:
       namesAllowList: []
       # -- Creates roles and rolebindings from namespaced service accounts in the array which allow the KEDA operator
       # to request service account tokens for use with the boundServiceAccountToken trigger source.
+      # Optional audience configures minting for this namespace/name; omit it in legacy mode.
+      # Enforce-audience mode requires a mapping here or in KEDA_SERVICE_ACCOUNT_TOKEN_AUDIENCES.
       # If the namespace does not exist, this will cause the helm chart installation to fail.
       serviceAccountTokenCreationRoles: []
-      # - name: myServiceAccount
-      #   namespace: myServiceAccountNamespace
+      # - name: metrics-reader
+      #   namespace: apps
+      #   audience: metrics-api
+      # -- Allow Keda to access all Service Token for KEDA operator
+      allowAllServiceAccountTokenCreation: false
 
 # -- Array of extra K8s manifests to deploy
 extraObjects: []
@@ -875,5 +1015,4 @@ customManagedBy: ""
 # -- Enable service links in pods. Although enabled, mirroring k8s default, it is highly recommended to disable,
 # due to its legacy status [Legacy container links](https://docs.docker.com/engine/network/links/)
 enableServiceLinks: true
-
 

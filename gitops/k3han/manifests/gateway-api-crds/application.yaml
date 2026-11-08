@@ -10,12 +10,12 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  # Gateway API standard-channel CRDs, vendored by NGF so the version matches the
-  # controller exactly (NGF 2.6.3 → Gateway API 1.5 standard). NGF's Helm chart does
-  # NOT ship these — they must be installed out-of-band, hence a dedicated app.
+  # Gateway API standard-channel CRDs, selected by NGF's versioned kustomization so
+  # they match the controller (NGF 2.8.1 → Gateway API 1.6.3 standard). NGF's Helm
+  # chart does NOT ship these — they must be installed out-of-band, hence a dedicated app.
   source:
     repoURL: https://github.com/nginx/nginx-gateway-fabric
-    targetRevision: v2.6.3
+    targetRevision: v2.8.1
     path: config/crd/gateway-api/standard
   destination:
     server: 'https://kubernetes.default.svc'
