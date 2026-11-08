@@ -201,6 +201,7 @@ data:
   SYSTEM_UPGRADE_JOB_BACKOFF_LIMIT: "99"
   SYSTEM_UPGRADE_JOB_IMAGE_PULL_POLICY: Always
   SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE: rancher/kubectl:v1.30.3@sha256:86264eefaba5ffc7df2ab290f02dc4c79befd29ff9dfc6d0de630e71d6bfd375
+  SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE_WINDOWS: ""
   SYSTEM_UPGRADE_JOB_PRIVILEGED: "true"
   SYSTEM_UPGRADE_JOB_TTL_SECONDS_AFTER_FINISH: "900"
   SYSTEM_UPGRADE_PLAN_POLLING_INTERVAL: 15m
@@ -264,7 +265,7 @@ spec:
         envFrom:
         - configMapRef:
             name: default-controller-env
-        image: rancher/system-upgrade-controller:v0.18.0@sha256:9813f85653c8378eef0582108a52f5c8f7b92da71e63f88e4cb234e0dbff27d1
+        image: rancher/system-upgrade-controller:v0.21.0@sha256:52f31eb3f2dcd3c937c8390bcb90d8a7f019832d9b131690a51c3f95decad443
         imagePullPolicy: IfNotPresent
         name: system-upgrade-controller
         securityContext:

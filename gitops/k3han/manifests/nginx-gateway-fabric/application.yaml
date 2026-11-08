@@ -19,7 +19,7 @@ spec:
     # prefix and the chart name in `chart`; no separate repository entry needed.
     - repoURL: ghcr.io/nginx/charts
       chart: nginx-gateway-fabric
-      targetRevision: 2.6.3
+      targetRevision: 2.8.1
       helm:
         # MUST match the release name of the original `helm install` (`ngf`).
         # ArgoCD's Helm release name defaults to the Application name; leaving it
