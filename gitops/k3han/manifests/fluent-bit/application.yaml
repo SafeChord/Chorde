@@ -15,7 +15,7 @@ spec:
     
     - repoURL: https://fluent.github.io/helm-charts
       chart: fluent-bit
-      targetRevision: 0.48.10
+      targetRevision: 0.58.3
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/fluent-bit/values-custom.yaml

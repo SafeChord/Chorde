@@ -2,6 +2,8 @@ deploymentMode: SingleBinary
 
 loki:
   auth_enabled: false
+  image:
+    tag: 3.6.16@sha256:79f3fbf2a3eca97dd735e2aa0871a2fc15365a81c68dea67f639b092c301f454
   commonConfig:
     replication_factor: 1
   schemaConfig:
@@ -22,12 +24,6 @@ loki:
     s3:
       region: ap-northeast-1
       s3ForcePathStyle: false
-
-  storage_config:
-    aws:
-      region: ap-northeast-1
-      bucketnames: amzn-loki-s3-jp
-      s3forcepathstyle: false
 
   ruler:
     alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
@@ -145,3 +141,17 @@ monitoring:
       installOperator: false
 test:
   enabled: false
+
+# The chart uses these tags for both cache StatefulSets. Its dependency values
+# expose tags rather than digest fields, so retain tag@digest in each tag.
+memcached:
+  image:
+    tag: 1.6.45-alpine@sha256:bfc2ee42c4edb65f436dafc6a61cbc6938c30118e11ddea2f968e1a2c90bb12a
+
+memcachedExporter:
+  image:
+    tag: v0.18.0@sha256:1458b31d4cae1a6618e85c8d31ecc49c4ebdcee3c8530be8d80d93e8792c4a58
+
+sidecar:
+  image:
+    tag: 2.14.3@sha256:52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
