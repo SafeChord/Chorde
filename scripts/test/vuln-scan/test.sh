@@ -300,6 +300,11 @@ elapsed() { # elapsed <call>
   local first; first=$(requests "$1" | head -n 1 | cut -d' ' -f1)
   echo $(( $(cut -d. -f1 "$STUB_DIR/clock") - ${first:-0} ))
 }
+# Fake seconds from the call's last request to the end of the run.
+after_last() { # after_last <call>
+  local last; last=$(requests "$1" | tail -n 1 | cut -d' ' -f1)
+  echo $(( $(cut -d. -f1 "$STUB_DIR/clock") - ${last:-0} ))
+}
 # Fake seconds from the call's first request to its last.
 span() { requests "$1" | awk 'NR == 1 { f = $1 } { l = $1 } END { print l - f + 0 }'; }
 # The fake seconds between one request of the call and the next, one per line.
@@ -346,6 +351,9 @@ for call in $CALLS; do
     test "$(span "$call")" -ge 1800
   check "  ... with waits that grow (first $(gaps "$call" | head -n 1) s, longest $(gaps "$call" | sort -n | tail -n 1) s)" \
     waits_grow "$call"
+  # A wait the run takes is a wait for another request: the hour is spent asking.
+  check "  ... and asks again after every wait it takes (gave up $(after_last "$call") s after its last request)" \
+    test "$(after_last "$call")" = 0
   check "  ... the last log line names the call and the 502" \
     bash -c 'names_call "$1" "$2" && grep -qw 502 <<<"$2"' _ "$call" "$line"
   check "  ... nothing processed" bash -c '! requests status | grep -q " 200$"'
