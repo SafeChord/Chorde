@@ -25,7 +25,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; [ $# -gt 1 ] && echo "$2" | sed '
 # expect <name> pass|fail <env-dir> [pattern the output must hold]
 expect() {
   local name=$1 want=$2 dir=$3 pattern=${4:-} out rc
-  out=$(cd "${RUN_IN:-.}" && python3 "$CHECK" "$dir" 2>&1); rc=$?
+  out=$(cd "${RUN_IN:-.}" && python3 "$CHECK" "$dir" 2>&1); rc=$?; LAST_OUT=$out
   if [ "$want" = pass ] && [ $rc -eq 0 ]; then ok "$name"
   elif [ "$want" = fail ] && [ $rc -eq 1 ] && { [ -z "$pattern" ] || grep -qF -- "$pattern" <<<"$out"; }; then ok "$name"
   else fail "$name (want $want, rc $rc)" "$out"
@@ -95,7 +95,11 @@ sed -i "s/targetRevision: ${KEDA_AT//./\\.}\$/targetRevision: $KEDA_TO/" "$d/man
 grep -q "targetRevision: $KEDA_TO\$" "$d/manifests/keda/application.yaml" || fail "fixture: keda's chart version ($KEDA_AT) was not found to move"
 expect "a version bump that keeps the old defaults" fail "$d" "keda/values.yaml: differs from keda $KEDA_TO"
 
-(cd "$TMP" && helm show values --repo https://kedacore.github.io/charts keda --version "$KEDA_TO") > "$d/manifests/keda/values.yaml"
+# Through check.py, so the fixture rides out a passing outage as the check does.
+python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from check import helm_show_values
+out, err = helm_show_values(*sys.argv[2:]); sys.exit(err) if err else sys.stdout.write(out)' \
+  "$HERE" https://kedacore.github.io/charts keda "$KEDA_TO" > "$d/manifests/keda/values.yaml" \
+  || fail "fixture: keda $KEDA_TO's defaults could not be read"
 expect "a version bump that regenerates the defaults" pass "$d"
 
 d=$(keda_env)
@@ -115,6 +119,81 @@ expect "a stage that excludes values.yaml among others" pass "$d"
 
 d=$(EXCLUDE='*/values.yaml' keda_env keda)
 expect "a stage whose exclude misses values.yaml at the directory root" fail "$d" "rendered as a manifest"
+
+echo "== chart downloads that fail (Chorde#63)"
+# A stand-in for helm on PATH: its first FAKE_HELM_FAILS runs print FAKE_HELM_ERR
+# (%n: the run's number) and exit 1, later runs print the demo chart's defaults.
+# FAKE_HELM_STATE counts the runs.
+FAKEBIN="$TMP/fakebin"; mkdir -p "$FAKEBIN"
+cat > "$FAKEBIN/helm" <<'EOF'
+#!/usr/bin/env bash
+n=$(( $(cat "$FAKE_HELM_STATE" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$FAKE_HELM_STATE"
+if [ "$n" -le "${FAKE_HELM_FAILS:-0}" ]; then echo "Error: ${FAKE_HELM_ERR//%n/$n}" >&2; exit 1; fi
+printf 'demo: true\n'
+EOF
+chmod +x "$FAKEBIN/helm"
+
+DEMO=$(new_env demo)
+mkdir -p "$DEMO/manifests/demo"
+cat > "$DEMO/manifests/demo/application.yaml" <<'EOF'
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  sources:
+    - repoURL: https://charts.example.test
+      chart: demo
+      targetRevision: 1.0.0
+EOF
+printf 'demo: true\n' > "$DEMO/manifests/demo/values.yaml"
+
+FETCH=https://github.com/example/charts/releases/download/demo-1.0.0/demo-1.0.0.tgz
+E504="failed to fetch $FETCH : 504 Gateway Timeout (run %n)"
+E503_OCI='failed to perform "FetchReference" on source: GET "https://ghcr.io/v2/example/charts/demo/manifests/1.0.0": response status code 503: Service Unavailable'
+E429="failed to fetch $FETCH : 429 Too Many Requests"
+EREFUSED='looks like "https://charts.example.test" is not a valid chart repository or cannot be reached: Get "https://charts.example.test/index.yaml": dial tcp 192.0.2.1:443: connect: connection refused'
+ETIMEOUT='looks like "https://charts.example.test" is not a valid chart repository or cannot be reached: Get "https://charts.example.test/index.yaml": context deadline exceeded (Client.Timeout exceeded while awaiting headers)'
+ENOTFOUND='chart "demo" version "1.0.0" not found in https://charts.example.test repository'
+E404='looks like "https://charts.example.test" is not a valid chart repository or cannot be reached: failed to fetch https://charts.example.test/index.yaml : 404 Not Found'
+
+# flaky <name> <fails> <error> pass|fail [pattern]: check the demo env with the
+# stand-in helm, failing <fails> times with <error>. Retries wait 0.1 s, doubling,
+# for up to WINDOW (default 3) seconds. Sets RUNS to how often helm ran, and
+# TOOK to the check's wall time in seconds.
+flaky() {
+  local state start; state="$TMP/helm-runs.$RANDOM"; start=$(date +%s.%N)
+  PATH="$FAKEBIN:$PATH" FAKE_HELM_STATE=$state FAKE_HELM_FAILS=$2 FAKE_HELM_ERR=$3 \
+    CHART_PINS_RETRY_WINDOW=${WINDOW:-3} CHART_PINS_RETRY_FIRST_WAIT=0.1 \
+    expect "$1" "$4" "$DEMO" "${5:-}"
+  RUNS=$(cat "$state" 2>/dev/null || echo 0)
+  TOOK=$(awk -v a="$start" -v b="$(date +%s.%N)" 'BEGIN { printf "%.1f", b - a }')
+}
+runs() { # runs <name> <test expression on $RUNS, $TOOK, $LAST_OUT>
+  if eval "$2"; then ok "$1"; else fail "$1 (helm ran $RUNS times in ${TOOK}s)" "$LAST_OUT"; fi
+}
+
+flaky "the demo chart, served at once" 0 "" pass
+runs "  ... read with one helm run" '[ "$RUNS" -eq 1 ]'
+flaky "504 twice, then served: compared as usual" 2 "$E504" pass
+runs "  ... read on the third run" '[ "$RUNS" -eq 3 ]'
+flaky "an OCI registry's 503, then served" 1 "$E503_OCI" pass
+flaky "429, then served" 1 "$E429" pass
+flaky "connection refused, then served" 1 "$EREFUSED" pass
+flaky "a client timeout, then served" 1 "$ETIMEOUT" pass
+
+printf 'demo: false\n' > "$DEMO/manifests/demo/values.yaml"
+flaky "504 once, then served, against a wrong values.yaml" 1 "$E504" fail "demo/values.yaml: differs from demo 1.0.0 defaults"
+printf 'demo: true\n' > "$DEMO/manifests/demo/values.yaml"
+
+WINDOW=2 flaky "504 on every run fails, naming the chart, its version and the last error" 999 "$E504" fail \
+  "demo/values.yaml: cannot read the chart's defaults: helm show values --repo https://charts.example.test demo --version 1.0.0: Error: failed to fetch $FETCH : 504 Gateway Timeout"
+runs "  ... after more than one run" '[ "$RUNS" -gt 1 ]'
+runs "  ... and the error it names is the last run's" 'grep -qF "(run $RUNS)" <<<"$LAST_OUT"'
+runs "  ... within the 2 s window and one more run" 'awk -v t="$TOOK" "BEGIN { exit !(t < 4) }"'
+flaky "a chart version the repository does not hold fails at once" 999 "$ENOTFOUND" fail "version \"1.0.0\" not found"
+runs "  ... with one helm run" '[ "$RUNS" -eq 1 ]'
+flaky "a repository that answers 404 fails at once" 999 "$E404" fail "404 Not Found"
+runs "  ... with one helm run" '[ "$RUNS" -eq 1 ]'
 
 echo "== image pins"
 # img_env <file> <yaml>: an env with no chart application and one manifest.
