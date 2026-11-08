@@ -88,11 +88,14 @@ rm "$d/manifests/keda/values.yaml"
 expect "a missing default values.yaml" fail "$d" "keda/values.yaml: missing"
 
 d=$(keda_env keda)
-sed -i 's/targetRevision: 2\.17\.2/targetRevision: 2.17.1/' "$d/manifests/keda/application.yaml"
-grep -q 'targetRevision: 2.17.1' "$d/manifests/keda/application.yaml" || fail "fixture: keda is no longer at 2.17.2"
-expect "a version bump that keeps the old defaults" fail "$d" "keda/values.yaml: differs from keda 2.17.1"
+# Move keda to another published release, whatever release it pins now.
+KEDA_AT=$(awk '/chart: keda/ {c=1; next} c && /targetRevision:/ {print $2; exit}' "$KEDA/application.yaml")
+KEDA_TO=2.17.1; [ "$KEDA_AT" = "$KEDA_TO" ] && KEDA_TO=2.17.0
+sed -i "s/targetRevision: ${KEDA_AT//./\\.}\$/targetRevision: $KEDA_TO/" "$d/manifests/keda/application.yaml"
+grep -q "targetRevision: $KEDA_TO\$" "$d/manifests/keda/application.yaml" || fail "fixture: keda's chart version ($KEDA_AT) was not found to move"
+expect "a version bump that keeps the old defaults" fail "$d" "keda/values.yaml: differs from keda $KEDA_TO"
 
-(cd "$TMP" && helm show values --repo https://kedacore.github.io/charts keda --version 2.17.1) > "$d/manifests/keda/values.yaml"
+(cd "$TMP" && helm show values --repo https://kedacore.github.io/charts keda --version "$KEDA_TO") > "$d/manifests/keda/values.yaml"
 expect "a version bump that regenerates the defaults" pass "$d"
 
 d=$(keda_env)
