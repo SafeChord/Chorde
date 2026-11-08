@@ -1,7 +1,8 @@
 #!/bin/sh
 # vuln-scan: scan the images running in K3han with trivy and upload the findings
 # to GitHub Code Scanning on SafeChord/Chorde (Chorde#40; Docs:
-# safechord.chorde.k3han.operations.md §3.1).
+# safechord.chorde.k3han.operations.md §3.1). GitHub calls retry 5xx, 429 and
+# failed connections with growing waits for up to an hour.
 #
 # Any failure of the run as a whole (listing pods, fetching the vulnerability
 # database, minting the token, the upload, its processing) exits non-zero: the
@@ -87,49 +88,125 @@ scan_images() {
 
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
-github_token() {
-  app_id=$(tr -d ' \r\n' < "$APP_DIR/app-id")
-  installation=$(tr -d ' \r\n' < "$APP_DIR/installation-id")
-  now=$(date +%s)
-  header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
-  payload=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' $((now - 60)) $((now + 540)) "$app_id" | b64url)
-  signature=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$APP_DIR/private-key" | b64url) \
-    || die "signing the App JWT"
-  curl -sSf -X POST \
-    -H "Authorization: Bearer $header.$payload.$signature" \
-    -H "Accept: application/vnd.github+json" \
-    "$GITHUB_API/app/installations/$installation/access_tokens" -o "$WORK_DIR/token.json" \
-    || die "minting the installation token"
-  TOKEN=$(jq -r .token "$WORK_DIR/token.json")
-  [ -n "$TOKEN" ] && [ "$TOKEN" != null ] || die "no token in the App's answer"
+github_request() { # github_request <call> <failure> <response> <auth> <curl args...>
+  local call=$1 failure=$2 response=$3 auth=$4
+  shift 4
+  local started delay now elapsed wait remaining app_id installation header payload signature jwt
+  local status curl_rc curl_error
+
+  started=
+  delay=5
+  while :; do
+    now=$(date +%s)
+    if [ -n "$started" ]; then
+      elapsed=$((now - started))
+      if [ "$elapsed" -ge 3600 ]; then
+        if [ -n "$curl_error" ]; then
+          die "$failure: $curl_error"
+        fi
+        die "$failure (HTTP $status)"
+      fi
+    fi
+
+    if [ "$auth" = app ]; then
+      # App JWTs last only ten minutes; sign a new one for every token attempt.
+      app_id=$(tr -d ' \r\n' < "$APP_DIR/app-id")
+      installation=$(tr -d ' \r\n' < "$APP_DIR/installation-id")
+      header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+      payload=$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' $((now - 60)) $((now + 540)) "$app_id" | b64url)
+      signature=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$APP_DIR/private-key" | b64url) \
+        || die "signing the App JWT"
+      jwt="$header.$payload.$signature"
+    elif [ "$auth" = installation ] && { [ -z "${TOKEN:-}" ] || [ "$now" -ge "${TOKEN_REFRESH_AT:-0}" ]; }; then
+      github_token
+    fi
+
+    : > "$WORK_DIR/github-curl.err"
+    if [ "$auth" = app ]; then
+      if status=$(curl -sS -X POST -H "Authorization: Bearer $jwt" \
+          -H "Accept: application/vnd.github+json" "$@" \
+          -o "$response" -w '%{http_code}' 2> "$WORK_DIR/github-curl.err"); then
+        curl_rc=0
+      else
+        curl_rc=$?
+      fi
+    else
+      if status=$(curl -sS -H "Authorization: Bearer $TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" "$@" \
+          -o "$response" -w '%{http_code}' 2> "$WORK_DIR/github-curl.err"); then
+        curl_rc=0
+      else
+        curl_rc=$?
+      fi
+    fi
+    curl_error=$(cat "$WORK_DIR/github-curl.err")
+
+    if [ "$curl_rc" -eq 0 ]; then
+      case $status in
+        2[0-9][0-9]) return 0 ;;
+        429|5[0-9][0-9]) ;;
+        *) die "$failure" ;;
+      esac
+    fi
+
+    now=$(date +%s)
+    [ -n "$started" ] || started=$now
+    elapsed=$((now - started))
+    if [ "$elapsed" -ge 3600 ]; then
+      if [ -n "$curl_error" ]; then
+        die "$failure: $curl_error"
+      fi
+      die "$failure (HTTP $status)"
+    fi
+
+    wait=$delay
+    remaining=$((3600 - elapsed))
+    [ "$wait" -le "$remaining" ] || wait=$remaining
+    if [ -n "$curl_error" ]; then
+      log "$call failed ($curl_error); retrying in ${wait}s"
+    else
+      log "$call returned HTTP $status; retrying in ${wait}s"
+    fi
+    sleep "$wait"
+    if [ "$delay" -lt 300 ]; then
+      delay=$((delay * 2))
+      [ "$delay" -le 300 ] || delay=300
+    fi
+  done
 }
 
-gh() { # gh <curl args...>
-  curl -sSf -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
-    -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+github_token() {
+  local token
+  github_request token "minting the installation token" "$WORK_DIR/token.json" app \
+    "$GITHUB_API/app/installations/$(tr -d ' \r\n' < "$APP_DIR/installation-id")/access_tokens"
+  token=$(jq -r .token "$WORK_DIR/token.json")
+  [ -n "$token" ] && [ "$token" != null ] || die "no token in the App's answer"
+  TOKEN=$token
+  TOKEN_REFRESH_AT=$(($(date +%s) + 3000))
 }
 
 upload() {
   github_token
   branch=${GITHUB_REF#refs/heads/}
-  gh "$GITHUB_API/repos/$GITHUB_REPO/commits/$branch" -o "$WORK_DIR/commit.json" \
-    || die "reading the head of $GITHUB_REF"
+  github_request head "reading the head of $GITHUB_REF" "$WORK_DIR/commit.json" installation \
+    "$GITHUB_API/repos/$GITHUB_REPO/commits/$branch"
   sha=$(jq -r .sha "$WORK_DIR/commit.json")
 
   gzip -c "$WORK_DIR/result.sarif" | base64 | tr -d '\n' > "$WORK_DIR/result.sarif.gz.b64"
   log "uploading $(wc -c < "$WORK_DIR/result.sarif.gz.b64") bytes (gzip, base64) against $GITHUB_REF $sha"
   jq -n --arg sha "$sha" --arg ref "$GITHUB_REF" --rawfile sarif "$WORK_DIR/result.sarif.gz.b64" \
     '{commit_sha: $sha, ref: $ref, sarif: $sarif, tool_name: "vuln-scan"}' > "$WORK_DIR/upload.json"
-  gh -X POST --data-binary "@$WORK_DIR/upload.json" \
-    "$GITHUB_API/repos/$GITHUB_REPO/code-scanning/sarifs" -o "$WORK_DIR/upload.resp" \
-    || die "Code Scanning refused the upload"
+  github_request upload "Code Scanning refused the upload" "$WORK_DIR/upload.resp" installation \
+    -X POST --data-binary "@$WORK_DIR/upload.json" \
+    "$GITHUB_API/repos/$GITHUB_REPO/code-scanning/sarifs"
   id=$(jq -r .id "$WORK_DIR/upload.resp")
 
   n=0
   while [ "$n" -lt "$POLL_TRIES" ]; do
     n=$((n + 1))
-    gh "$GITHUB_API/repos/$GITHUB_REPO/code-scanning/sarifs/$id" -o "$WORK_DIR/status.json" \
-      || die "reading the processing status of upload $id"
+    github_request status "reading the processing status of upload $id" "$WORK_DIR/status.json" installation \
+      "$GITHUB_API/repos/$GITHUB_REPO/code-scanning/sarifs/$id"
     status=$(jq -r .processing_status "$WORK_DIR/status.json")
     case $status in
       complete) log "upload $id processed"; return 0 ;;
