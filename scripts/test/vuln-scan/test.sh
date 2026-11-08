@@ -397,6 +397,36 @@ check "token: local curl error (3) -> non-zero without retry, preserving curl's 
   bash -c 'test "$1" != 0 && test "$(requests token | wc -l)" = 0 && test "$(cut -d. -f1 "$2/clock")" = "$3" && names_call token "$4" && grep -q "curl: (3)" <<<"$4"' \
     _ "$RC" "$STUB_DIR" "$clock_before" "$line"
 
+# HTTP/2 framing and stream errors are connection failures too. Fail three head
+# calls locally, then let the fourth reach the real curl and API stub.
+new_case
+real_curl=$(command -v curl)
+cat > "$CASE/bin/curl" <<EOF
+#!/usr/bin/env bash
+call=
+for arg in "\$@"; do
+  case "\$arg" in
+    "\$GITHUB_API"/repos/*/commits/*) call=head ;;
+  esac
+done
+if [ "\$call" = head ]; then
+  count=0
+  if [ -f "\$STUB_DIR/curl-head-count" ]; then count=\$(cat "\$STUB_DIR/curl-head-count"); fi
+  count=\$((count + 1))
+  printf '%s\n' "\$count" > "\$STUB_DIR/curl-head-count"
+  if [ "\$count" -le 3 ]; then
+    echo "curl: (92) injected HTTP/2 stream error" >&2
+    exit 92
+  fi
+fi
+exec "$real_curl" "\$@"
+EOF
+chmod +x "$CASE/bin/curl"
+STUB_MAP=$STD_MAP run_scan
+check "head: curl HTTP/2 stream error (92) three times, then served -> the run completes" completed
+check "  ... and the fourth call reaches the API" test "$(cat "$STUB_DIR/curl-head-count")" = 4
+check "  ... with one successful head response" test "$(requests head | wc -l)" = 1
+
 new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"upload": {"with": "drop"}}' run_scan
 line=$(last_line)
 check "upload: the connection drops for good -> non-zero, the last log line names the call and curl's error" \

@@ -141,7 +141,7 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
       esac
     else
       case $curl_rc in
-        5|6|7|18|28|35|52|55|56) ;;
+        5|6|7|16|18|28|35|52|55|56|92) ;;
         *)
           [ -n "$curl_error" ] || curl_error="curl exited with code $curl_rc"
           die "$failure: $curl_error"
