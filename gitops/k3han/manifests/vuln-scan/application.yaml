@@ -1,0 +1,26 @@
+# vuln-scan is a kustomization (gitops/k3han/kustomize/vuln-scan): the platform
+# stage renders this directory as plain manifests, so it holds only the
+# Application that renders the kustomization (Chorde#54; Docs
+# safechord.chorde.md §4, item 2). No directory option here: one would make
+# Argo CD render the kustomization as plain manifests too.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vuln-scan
+  namespace: argocd
+  labels:
+    k3han.io/service: vuln-scan
+    argocd.argoproj.io/managed-by: application
+spec:
+  project: chorde
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/kustomize/vuln-scan
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vuln-scan
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
