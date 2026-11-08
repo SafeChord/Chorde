@@ -44,6 +44,11 @@ spec:
         repoURL: https://github.com/SafeChord/Chorde.git
         targetRevision: main
         path: 'gitops/k3han/manifests/{{service}}'
+        # values.yaml is the chart's defaults, kept beside the overlay so a chart
+        # bump shows which defaults moved. It is no manifest, and one holding
+        # apiVersion:, kind: and metadata: fails the whole directory to render.
+        directory:
+          exclude: values.yaml
       destination:
         server: https://kubernetes.default.svc
         namespace: argocd
