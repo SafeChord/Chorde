@@ -22,6 +22,7 @@ config:
         Flush        1
         Daemon       Off
         Log_Level    info
+        Parsers_File parsers.conf
         Parsers_File custom_parsers.conf
         HTTP_Server  On
 
@@ -30,12 +31,6 @@ config:
         Name k8s-tag-parser
         Format regex
         Regex ^(?<pod_name>[^_]+)_(?<namespace_name>[^_]+)_(?<container_name>.+)-(?<docker_id>[a-z0-9]{64})\.log$
-    [PARSER]
-        Name cri
-        Format regex
-        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]+) (?<message>.*)$
-        Time_Key time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
 
   inputs: |
     [INPUT]
