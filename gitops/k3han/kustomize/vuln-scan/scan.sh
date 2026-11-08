@@ -98,15 +98,6 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
   delay=5
   while :; do
     now=$(date +%s)
-    if [ -n "$started" ]; then
-      elapsed=$((now - started))
-      if [ "$elapsed" -ge 3600 ]; then
-        if [ -n "$curl_error" ]; then
-          die "$failure: $curl_error"
-        fi
-        die "$failure (HTTP $status)"
-      fi
-    fi
 
     if [ "$auth" = app ]; then
       # App JWTs last only ten minutes; sign a new one for every token attempt.
@@ -146,7 +137,15 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
       case $status in
         2[0-9][0-9]) return 0 ;;
         429|5[0-9][0-9]) ;;
-        *) die "$failure" ;;
+        *) die "$failure (HTTP $status)" ;;
+      esac
+    else
+      case $curl_rc in
+        5|6|7|18|28|35|52|55|56) ;;
+        *)
+          [ -n "$curl_error" ] || curl_error="curl exited with code $curl_rc"
+          die "$failure: $curl_error"
+          ;;
       esac
     fi
 

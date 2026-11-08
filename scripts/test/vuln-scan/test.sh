@@ -364,6 +364,39 @@ for call in $CALLS; do
     bash -c 'test "$1" != 0 && test "$(requests "$2" | wc -l)" = 1' _ "$RC" "$call"
 done
 
+# A permanent authentication failure must say which call failed and preserve
+# the HTTP status in the final log line.
+for call in $CALLS; do
+  new_case; STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"with\": 401}}" run_scan
+  line=$(last_line)
+  check "$call: 401 -> non-zero, without asking again, and with the call and status in the last line" \
+    bash -c 'test "$1" != 0 && test "$(requests "$2" | wc -l)" = 1 && names_call "$2" "$3" && grep -qw 401 <<<"$3"' \
+      _ "$RC" "$call" "$line"
+done
+
+# A malformed URL is a local curl error, not a failed connection to retry.
+new_case
+real_curl=$(command -v curl)
+cat > "$CASE/bin/curl" <<EOF
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  case "\$arg" in
+    "\$GITHUB_API"/app/installations/*)
+      echo "curl: (3) injected malformed URL" >&2
+      exit 3
+      ;;
+  esac
+done
+exec "$real_curl" "\$@"
+EOF
+chmod +x "$CASE/bin/curl"
+clock_before=$(cut -d. -f1 "$STUB_DIR/clock")
+STUB_MAP=$STD_MAP run_scan
+line=$(last_line)
+check "token: local curl error (3) -> non-zero without retry, preserving curl's error" \
+  bash -c 'test "$1" != 0 && test "$(requests token | wc -l)" = 0 && test "$(cut -d. -f1 "$2/clock")" = "$3" && names_call token "$4" && grep -q "curl: (3)" <<<"$4"' \
+    _ "$RC" "$STUB_DIR" "$clock_before" "$line"
+
 new_case; STUB_MAP=$STD_MAP STUB_FAULTS='{"upload": {"with": "drop"}}' run_scan
 line=$(last_line)
 check "upload: the connection drops for good -> non-zero, the last log line names the call and curl's error" \
