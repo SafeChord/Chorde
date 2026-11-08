@@ -460,8 +460,8 @@ if rendered=$(kubectl kustomize "$MANIFESTS" 2>"$CASE/kustomize.err"); then
   check "one CronJob" test "$(jq -s 'length' <<<"$cj")" = 1
   check "runs once a week (a single day-of-week, every month, any day-of-month)" \
     bash -c 'jq -r .spec.schedule <<<"$1" | awk "{exit !(NF==5 && \$3==\"*\" && \$4==\"*\" && \$5 ~ /^[0-6]$/)}"' _ "$cj"
-  check "trivy is pinned to 0.76.1 by tag and digest" \
-    bash -c 'jq -r "$2.containers[].image" <<<"$1" | grep -qE "^(docker\.io/)?aquasec/trivy:0\.76\.1@sha256:[0-9a-f]{64}$"' _ "$cj" "$pod"
+  check "trivy is pinned to 0.76.2 by tag and digest" \
+    bash -c 'jq -r "$2.containers[].image" <<<"$1" | grep -qE "^(docker\.io/)?aquasec/trivy:0\.76\.2@sha256:[0-9a-f]{64}$"' _ "$cj" "$pod"
   check "never on gce-agent-tw: required node affinity excludes it" \
     bash -c 'jq -e "[$2.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms[].matchExpressions[] | select(.key == \"kubernetes.io/hostname\" and .operator == \"NotIn\") | .values[]] | index(\"gce-agent-tw\")" <<<"$1" >/dev/null' _ "$cj" "$pod"
   check "never on gce-agent-tw: does not tolerate its proxy-only taint" \
@@ -531,7 +531,7 @@ if [ "${VULN_SCAN_IT:-0}" = 1 ]; then
   jq --arg cve "$cve" --arg purl "$purl" '.statements += [{vulnerability: {name: $cve}, products: [{"@id": $purl}], status: "not_affected", justification: "vulnerable_code_not_in_execute_path"}]' \
     "$FIX/empty.openvex.json" > "$IT/vex.json"
   trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --vex "$FIX/empty.openvex.json" --format json -o "$IT/empty.json" "$img"
-  check "a VEX file with no statement is accepted by trivy 0.76.1" test -s "$IT/empty.json"
+  check "a VEX file with no statement is accepted by the local trivy" test -s "$IT/empty.json"
   trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --vex "$IT/vex.json" --format json -o "$IT/after.json" "$img"
   check "a VEX statement removes its finding ($cve on $purl)" \
     bash -c 'jq -e --arg c "$2" "any(.Results[].Vulnerabilities[]?; .VulnerabilityID == \$c and .PkgName == \"pyasn1\")" "$1" >/dev/null && ! jq -e --arg c "$2" "any(.Results[].Vulnerabilities[]?; .VulnerabilityID == \$c and .PkgName == \"pyasn1\")" "$3" >/dev/null' _ "$IT/before.json" "$cve" "$IT/after.json"
