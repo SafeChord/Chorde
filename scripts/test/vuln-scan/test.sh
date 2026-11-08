@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Requirement tests for the vuln-scan CronJob (Chorde#40).
 #
-# Runs gitops/k3han/manifests/vuln-scan/scan.sh against stubbed trivy and curl,
-# fed with real trivy output trimmed into fixtures/, and checks the rendered
-# manifests with `kubectl kustomize`.
+# Runs gitops/k3han/kustomize/vuln-scan/scan.sh against stubbed trivy and curl,
+# fed with real trivy output trimmed into fixtures/, checks the rendered
+# manifests with `kubectl kustomize`, and checks the Application in the platform
+# stage's vuln-scan/ directory that deploys them (Chorde#54).
 #
 #   scripts/test/vuln-scan/test.sh            # stubbed, no network
 #   VULN_SCAN_IT=1 scripts/test/vuln-scan/test.sh   # also runs the real trivy (network)
@@ -13,7 +14,8 @@ set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../../.." && pwd)
-MANIFESTS="$REPO/gitops/k3han/manifests/vuln-scan"
+MANIFESTS="$REPO/gitops/k3han/kustomize/vuln-scan"
+STAGE_DIR="$REPO/gitops/k3han/manifests/vuln-scan"
 FIX="$HERE/fixtures"
 
 PASS=0
@@ -328,6 +330,23 @@ check "no file under gitops/ holds a VEX document in plaintext (Chorde#43)" \
 
 check "the platform stage lists vuln-scan" \
   grep -qE '^\s*-\s*service:\s*vuln-scan\s*$' "$REPO/gitops/k3han/stages/01-platform.yaml"
+
+# Chorde#54: the platform stage renders its vuln-scan/ directory as plain
+# manifests, so the kustomization lives outside it and that directory holds only
+# the Application that renders it. A directory option on that Application would
+# make Argo CD render the kustomization as plain manifests again.
+stage_files=$(cd "$STAGE_DIR" 2>/dev/null && find . -type f | sed 's#^\./##' | sort)
+check "the platform stage's vuln-scan/ directory holds one file, the Application" \
+  test "$stage_files" = application.yaml
+app=$(kubectl create --dry-run=client -o json -f "$STAGE_DIR/application.yaml" 2>/dev/null)
+check "  ... an Application in argocd, in the chorde project" \
+  bash -c 'jq -e ".kind == \"Application\" and .metadata.namespace == \"argocd\" and .spec.project == \"chorde\"" <<<"$1" >/dev/null' _ "$app"
+check "  ... rendering gitops/k3han/kustomize/vuln-scan on Chorde main, as a kustomization" \
+  bash -c 'jq -e "(.spec.sources == null) and (.spec.source | .repoURL == \"https://github.com/SafeChord/Chorde.git\" and .targetRevision == \"main\" and .path == \"gitops/k3han/kustomize/vuln-scan\" and (has(\"directory\") or has(\"helm\") or has(\"plugin\") | not) and (.kustomize // {} | length == 0))" <<<"$1" >/dev/null' _ "$app"
+check "  ... syncing automatically, pruning and self-healing like the stage it replaces" \
+  bash -c 'jq -e ".spec.syncPolicy.automated | .prune == true and .selfHeal == true" <<<"$1" >/dev/null' _ "$app"
+check "  ... into the cluster it runs in" \
+  bash -c 'jq -e ".spec.destination.server == \"https://kubernetes.default.svc\"" <<<"$1" >/dev/null' _ "$app"
 
 # ---------------------------------------------------------------------------
 if [ "${VULN_SCAN_IT:-0}" = 1 ]; then

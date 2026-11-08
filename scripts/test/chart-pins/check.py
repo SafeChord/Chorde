@@ -7,7 +7,9 @@ Docs safechord.chorde.md section 4, item 1:
    beside its overlay, equal to `helm show values` of the chart at the
    application's targetRevision.
 2. Every image Chorde pins itself, in an overlay or a manifest, is pinned
-   as tag@digest. Images a chart picks by default are not checked.
+   as tag@digest. Images a chart picks by default are not checked. The
+   manifests are those under manifests/ and kustomize/, where a service a
+   kustomization renders keeps its source (Chorde#54).
 
     check.py <gitops-env-dir>      e.g. gitops/k3han
     check.py --list-pins <gitops-env-dir>
@@ -191,7 +193,8 @@ def check_overlay_images(rel, doc):
 
 def check_images(env_dir):
     manifests = os.path.join(env_dir, "manifests")
-    for root, _, files in os.walk(manifests):
+    trees = [manifests, os.path.join(env_dir, "kustomize")]
+    for root, _, files in (w for tree in trees for w in os.walk(tree)):
         for name in sorted(files):
             if not name.endswith(".yaml") or name == "values.yaml" or "unsealed" in name:
                 continue
