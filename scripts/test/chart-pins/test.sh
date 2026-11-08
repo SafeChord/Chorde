@@ -115,10 +115,11 @@ expect "a stage whose exclude misses values.yaml at the directory root" fail "$d
 
 echo "== image pins"
 # img_env <file> <yaml>: an env with no chart application and one manifest.
+# TREE=kustomize puts it under kustomize/ instead of manifests/.
 img_env() {
   local dir; dir=$(new_env)
-  mkdir -p "$dir/manifests/svc"
-  printf '%s\n' "$2" > "$dir/manifests/svc/$1"
+  mkdir -p "$dir/${TREE:-manifests}/svc"
+  printf '%s\n' "$2" > "$dir/${TREE:-manifests}/svc/$1"
   echo "$dir"
 }
 
@@ -177,6 +178,9 @@ expect "overlay image.tag with an empty digest" fail "$(img_env values-custom.ya
     digest: \"\"")")" "controller.image.tag"
 expect "overlay image as one string, tag only" fail "$(img_env values-custom.yaml "$(printf 'sidecar:\n  image: repo/app:1.0\n')")" "sidecar.image"
 expect "overlay image as one string, tag@digest" pass "$(img_env values-custom.yaml "$(printf 'sidecar:\n  image: repo/app:1.0@%s\n' "$DIGEST")")"
+
+expect "a kustomization's manifest under kustomize/, tag@digest" pass "$(TREE=kustomize img_env cronjob.yaml "$(deploy "repo/app:1.0@$DIGEST" "busybox:1.36@$DIGEST")")"
+expect "a kustomization's manifest under kustomize/, tag only" fail "$(TREE=kustomize img_env cronjob.yaml "$(deploy repo/app:1.0 "busybox:1.36@$DIGEST")")" "../kustomize/svc/cronjob.yaml"
 
 d=$(img_env values.yaml "$(deploy repo/app:1.0 busybox:1.36)")
 expect "a chart's default values.yaml is not checked for pins" pass "$d"
