@@ -122,14 +122,14 @@ expect "a stage whose exclude misses values.yaml at the directory root" fail "$d
 
 echo "== chart downloads that fail (Chorde#63)"
 # A stand-in for helm on PATH: its first FAKE_HELM_FAILS runs print FAKE_HELM_ERR
-# (%n: the run's number) and exit 1, later runs print the demo chart's defaults.
-# FAKE_HELM_STATE counts the runs.
+# (%n: the run's number) and exit 1, after FAKE_HELM_SLEEP seconds if set; later
+# runs print the demo chart's defaults. FAKE_HELM_STATE counts the runs.
 FAKEBIN="$TMP/fakebin"; mkdir -p "$FAKEBIN"
 cat > "$FAKEBIN/helm" <<'EOF'
 #!/usr/bin/env bash
 n=$(( $(cat "$FAKE_HELM_STATE" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$FAKE_HELM_STATE"
-if [ "$n" -le "${FAKE_HELM_FAILS:-0}" ]; then echo "Error: ${FAKE_HELM_ERR//%n/$n}" >&2; exit 1; fi
+if [ "$n" -le "${FAKE_HELM_FAILS:-0}" ]; then sleep "${FAKE_HELM_SLEEP:-0}"; echo "Error: ${FAKE_HELM_ERR//%n/$n}" >&2; exit 1; fi
 printf 'demo: true\n'
 EOF
 chmod +x "$FAKEBIN/helm"
@@ -190,6 +190,8 @@ WINDOW=2 flaky "504 on every run fails, naming the chart, its version and the la
 runs "  ... after more than one run" '[ "$RUNS" -gt 1 ]'
 runs "  ... and the error it names is the last run's" 'grep -qF "(run $RUNS)" <<<"$LAST_OUT"'
 runs "  ... within the 2 s window and one more run" 'awk -v t="$TOOK" "BEGIN { exit !(t < 4) }"'
+WINDOW=1 FAKE_HELM_SLEEP=1.5 flaky "a run that hangs past the window is not run again" 999 "$ETIMEOUT" fail "Client.Timeout"
+runs "  ... with one helm run" '[ "$RUNS" -eq 1 ]'
 flaky "a chart version the repository does not hold fails at once" 999 "$ENOTFOUND" fail "version \"1.0.0\" not found"
 runs "  ... with one helm run" '[ "$RUNS" -eq 1 ]'
 flaky "a repository that answers 404 fails at once" 999 "$E404" fail "404 Not Found"
