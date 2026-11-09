@@ -10,8 +10,10 @@ metadata:
 spec:
   kafka:
     version: 4.1.1
-    # Moves with version: the image of this Kafka version for the deployed operator.
-    image: quay.io/strimzi/kafka:0.50.0-kafka-4.1.1@sha256:015ca88119b94649725df6d9f233d5815db26f3bee37d17db0f2cbc80f4bd95b
+    # No image here: the operator picks the image built for its own release and this
+    # version, by tag. A digest pin here ties the broker image to the operator release,
+    # and the two sync as separate applications (Chorde#50); the chart's
+    # kafka.image.tag maps every version to one image.
     # Raised once the last version move has soaked (Chorde#50): a raised
     # metadata version cannot be lowered with a Kafka downgrade.
     metadataVersion: 4.0-IV3

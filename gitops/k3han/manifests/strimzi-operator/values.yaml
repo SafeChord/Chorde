@@ -3,14 +3,13 @@
 # Default replicas for the cluster operator
 replicas: 1
 
-# If you set `watchNamespaces` to the same value as ``.Release.Namespace` (e.g. `helm ... --namespace $NAMESPACE`),
-# the chart will fail because duplicate RoleBindings will be attempted to be created in the same namespace
+# Contains `.Release.Namespace` by default
 watchNamespaces: []
 watchAnyNamespace: false
 
 defaultImageRegistry: quay.io
 defaultImageRepository: strimzi
-defaultImageTag: 0.50.0
+defaultImageTag: 1.0.1
 
 image:
   registry: ""
@@ -37,11 +36,13 @@ tmpDirSizeLimit: 1Mi
 extraEnvs: []
 
 tolerations: []
+topologySpreadConstraints: []
 affinity: {}
 annotations: {}
 labels: {}
 nodeSelector: {}
 deploymentAnnotations: {}
+deploymentLabels: {}
 deploymentStrategy: {}
 priorityClassName: ""
 
@@ -147,7 +148,7 @@ kafkaBridge:
     registry: ""
     repository:
     name: kafka-bridge
-    tag: 0.33.1
+    tag: 1.0.0
 kafkaExporter:
   image:
     registry: ""
