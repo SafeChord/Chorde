@@ -22,7 +22,7 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# 指定使用的 ServiceAccount 名稱 (1.0.1 仍只接受字串)
+# 指定使用的 ServiceAccount 名稱 (1.3.1 仍只接受字串)
 serviceAccount: strimzi-cluster-operator
 
 # Images pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); they move
@@ -30,10 +30,10 @@ serviceAccount: strimzi-cluster-operator
 # operator image through keys of their own. The Kafka image is left to the operator's
 # own version map, by tag: see strimzi-kafka/kafka-cluster.yaml.
 image:
-  tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
+  tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
 topicOperator:
   image:
-    tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
+    tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
 userOperator:
   image:
-    tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
+    tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
