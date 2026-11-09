@@ -22,19 +22,18 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# 指定使用的 ServiceAccount 名稱 (0.50.0 僅接受字串)
+# 指定使用的 ServiceAccount 名稱 (1.0.1 仍只接受字串)
 serviceAccount: strimzi-cluster-operator
 
 # Images pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); they move
 # with the chart version. The entity operator's topic and user operators run the
-# operator image through keys of their own. The Kafka image is pinned in the Kafka
-# resource (strimzi-kafka/kafka-cluster.yaml): kafka.image.tag here would map every
-# Kafka version to one image.
+# operator image through keys of their own. The Kafka image is left to the operator's
+# own version map, by tag: see strimzi-kafka/kafka-cluster.yaml.
 image:
-  tag: 0.50.0@sha256:97289bc755096a98f59d5858c06082d374b9605b846b0a10c0682f404a06f5bc
+  tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
 topicOperator:
   image:
-    tag: 0.50.0@sha256:97289bc755096a98f59d5858c06082d374b9605b846b0a10c0682f404a06f5bc
+    tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
 userOperator:
   image:
-    tag: 0.50.0@sha256:97289bc755096a98f59d5858c06082d374b9605b846b0a10c0682f404a06f5bc
+    tag: 1.0.1@sha256:9c32dfe22d8602f43e8d8780706fbf65f023bcde3cef272688f35d1eead2640f
