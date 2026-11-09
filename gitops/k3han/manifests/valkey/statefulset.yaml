@@ -25,7 +25,7 @@ spec:
         fsGroup: 1001
       containers:
         - name: valkey
-          image: valkey/valkey:8.1@sha256:640c5e62cea04b6d6f2084232651d0cc70362d31f4f805e7be94dbed6855e8f2
+          image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
           imagePullPolicy: Always
           command: ["sh", "-c", "valkey-server --requirepass $VALKEY_PASSWORD --appendonly yes"]
           env:
