@@ -9,7 +9,7 @@ metadata:
     strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 4.1.1
+    version: 4.2.0
     # No image here: the operator picks the image built for its own release and this
     # version, by tag. A digest pin here ties the broker image to the operator release,
     # and the two sync as separate applications (Chorde#50); the chart's
