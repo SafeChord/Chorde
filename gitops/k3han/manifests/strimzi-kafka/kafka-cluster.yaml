@@ -1,4 +1,4 @@
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: k3han-cluster
@@ -9,7 +9,11 @@ metadata:
     strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 4.0.0
+    version: 4.1.1
+    # Moves with version: the image of this Kafka version for the deployed operator.
+    image: quay.io/strimzi/kafka:0.50.0-kafka-4.1.1@sha256:015ca88119b94649725df6d9f233d5815db26f3bee37d17db0f2cbc80f4bd95b
+    # Raised once the last version move has soaked (Chorde#50): a raised
+    # metadata version cannot be lowered with a Kafka downgrade.
     metadataVersion: 4.0-IV3
     listeners:
       - name: plain
