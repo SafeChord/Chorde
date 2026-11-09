@@ -15,7 +15,7 @@ spec:
     
     - repoURL: https://argoproj.github.io/argo-helm
       chart: argo-cd
-      targetRevision: 9.0.6
+      targetRevision: 10.17.0
       helm:
         valueFiles:
           - $chorde-repo/gitops/k3han/manifests/argocd/values-custom.yaml
