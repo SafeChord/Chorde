@@ -1,0 +1,9 @@
+# Wraps the upstream chart so that its version and Chorde's values for it reach
+# Argo CD at one git revision (Docs safechord.chorde.md section 4, item 1).
+apiVersion: v2
+name: argocd
+version: 0.0.0
+dependencies:
+  - name: argo-cd
+    version: 10.17.0
+    repository: https://argoproj.github.io/argo-helm

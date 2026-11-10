@@ -10,18 +10,12 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  sources:
-    - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: main
-      ref: chorde-repo
-    
-    - repoURL: https://grafana.github.io/helm-charts
-      chart: loki
-      targetRevision: 7.5.0
-      helm:
-        valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/loki/values-custom.yaml
-    
+  # The chart's version and values, wrapped together (Chorde#77).
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/loki
+
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: loki

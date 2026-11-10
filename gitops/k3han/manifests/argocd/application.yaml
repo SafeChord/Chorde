@@ -8,18 +8,12 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  sources:
-    - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: main
-      ref: chorde-repo
-    
-    - repoURL: https://argoproj.github.io/argo-helm
-      chart: argo-cd
-      targetRevision: 10.17.0
-      helm:
-        valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/argocd/values-custom.yaml
-    
+  # The chart's version and values, wrapped together (Chorde#77).
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/argocd
+
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: argocd
