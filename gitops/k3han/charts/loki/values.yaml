@@ -28,7 +28,9 @@ loki:
         region: ap-northeast-1
         s3ForcePathStyle: false
 
-    ruler:
+    # The chart reads the ruler from rulerConfig; rules sit under the tenant
+    # directory, `fake` while auth is disabled (the loki-rules mount below).
+    rulerConfig:
       alertmanager_url: http://kube-prometheus-stack-alertmanager.monitoring.svc.cluster.local:9093
       enable_api: true
       storage:
@@ -36,7 +38,6 @@ loki:
         local:
           directory: /var/loki/rules
       rule_path: /var/loki/rules-temp
-
 
   chunksCache:
     resources:
