@@ -20,15 +20,3 @@ data:
               severity: warning
             annotations:
               summary: "High error log rate in {{ $labels.namespace }}/{{ $labels.pod }}"
-  # Temporary (Chorde#80): fires at once, to show a Loki alert reaches
-  # Alertmanager. Removed once seen there.
-  ruler-path-check.yaml: |
-    groups:
-      - name: ruler-path-check
-        rules:
-          - alert: LokiRulerPathCheck
-            expr: vector(1) > 0
-            labels:
-              severity: info
-            annotations:
-              summary: "Temporary: checks that Loki alerts reach Alertmanager (Chorde#80); removed once seen"
