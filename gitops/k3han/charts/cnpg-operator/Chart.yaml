@@ -1,0 +1,9 @@
+# Wraps the upstream chart so that its version and Chorde's values for it reach
+# Argo CD at one git revision (Docs safechord.chorde.md section 4, item 1).
+apiVersion: v2
+name: cnpg-operator
+version: 0.0.0
+dependencies:
+  - name: cloudnative-pg
+    version: 0.29.1
+    repository: https://cloudnative-pg.github.io/charts

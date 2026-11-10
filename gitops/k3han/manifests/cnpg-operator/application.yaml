@@ -10,17 +10,11 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  sources:
-    - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: main
-      ref: chorde-repo
-
-    - repoURL: https://cloudnative-pg.github.io/charts
-      chart: cloudnative-pg
-      targetRevision: 0.29.1
-      helm:
-        valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/cnpg-operator/values-custom.yaml
+  # The chart's version and values, wrapped together (Chorde#77).
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/cnpg-operator
 
   destination:
     server: 'https://kubernetes.default.svc'

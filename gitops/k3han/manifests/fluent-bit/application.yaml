@@ -8,18 +8,12 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  sources:
-    - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: main
-      ref: chorde-repo
-    
-    - repoURL: https://fluent.github.io/helm-charts
-      chart: fluent-bit
-      targetRevision: 0.58.3
-      helm:
-        valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/fluent-bit/values-custom.yaml
-    
+  # The chart's version and values, wrapped together (Chorde#77).
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/fluent-bit
+
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: loki

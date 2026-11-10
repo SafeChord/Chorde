@@ -1,0 +1,9 @@
+# Wraps the upstream chart so that its version and Chorde's values for it reach
+# Argo CD at one git revision (Docs safechord.chorde.md section 4, item 1).
+apiVersion: v2
+name: nginx-gateway-fabric
+version: 0.0.0
+dependencies:
+  - name: nginx-gateway-fabric
+    version: 2.8.1
+    repository: oci://ghcr.io/nginx/charts

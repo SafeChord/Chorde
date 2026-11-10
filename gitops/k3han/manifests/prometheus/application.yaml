@@ -10,18 +10,12 @@ metadata:
     argocd.argoproj.io/managed-by: application
 spec:
   project: chorde
-  sources:
-    - repoURL: https://github.com/SafeChord/Chorde.git
-      targetRevision: main
-      ref: chorde-repo
-    
-    - repoURL: https://prometheus-community.github.io/helm-charts
-      chart: kube-prometheus-stack
-      targetRevision: 92.21.1
-      helm:
-        valueFiles:
-          - $chorde-repo/gitops/k3han/manifests/prometheus/values-custom.yaml
-    
+  # The chart's version and values, wrapped together (Chorde#77).
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/prometheus
+
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: monitoring

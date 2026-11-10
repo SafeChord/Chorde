@@ -1,0 +1,28 @@
+# Chorde's overlay; the chart reads only what sits under its name.
+sealed-secrets:
+
+  # Disable sealing key renewal: the key set stays fixed, so one off-cluster
+  # backup covers it (Docs safechord.security.md, Sealing Keys). The chart
+  # reads only this value; "0" must stay a quoted string.
+  keyrenewperiod: "0"
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+  # 可選：避免資源浪費
+  # resources:
+  #   requests:
+  #     cpu: 50m
+  #     memory: 64Mi
+  #   limits:
+  #     cpu: 100m
+  #     memory: 128Mi

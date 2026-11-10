@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Requirement tests for chart defaults and image pins (Chorde#45).
+# Requirement tests for chart applications, chart defaults and image pins
+# (Chorde#45, Chorde#77).
 #
 # Runs check.py against gitops/k3han, then against small trees built in a temp
 # directory, each breaking or keeping the rule one way, so the check is shown
@@ -35,8 +36,7 @@ expect() {
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# new_env <stage services...>: an env dir whose one stage lists the services
-# and excludes values.yaml from their directories (EXCLUDE overrides it).
+# new_env <stage services...>: an env dir whose one stage lists the services.
 new_env() {
   local dir; dir=$(mktemp -d "$TMP/env.XXXX")
   mkdir -p "$dir/stages" "$dir/manifests"
@@ -48,10 +48,6 @@ new_env() {
     echo "    spec:"
     echo "      source:"
     echo "        path: 'gitops/k3han/manifests/{{service}}'"
-    if [ -n "${EXCLUDE-values.yaml}" ]; then
-      echo "        directory:"
-      echo "          exclude: '${EXCLUDE-values.yaml}'"
-    fi
     echo "  generators:"
     echo "    - list:"
     echo "        elements:"
@@ -61,91 +57,225 @@ new_env() {
   echo "$dir"
 }
 
-DIGEST=sha256:$(printf 'a%.0s' $(seq 64))
-
-echo "== gitops/k3han"
-# Run from manifests/, where each chart name is also a directory name.
-RUN_IN="$REPO/gitops/k3han/manifests" \
-  expect "every deployed chart has its defaults; every own image is tag@digest" pass "$REPO/gitops/k3han"
-
-echo "== chart defaults"
-KEDA="$REPO/gitops/k3han/manifests/keda"
-keda_env() { # keda_env <stage services...>: an env holding a copy of keda
-  local dir; dir=$(new_env "$@")
-  cp -r "$KEDA" "$dir/manifests/keda"
-  echo "$dir"
+# wrap <env> <service> <chart> <version> <repository> <defaults-file> [overlay]:
+# the service as Chorde deploys a chart: its Application in manifests/<service>,
+# pointing at the wrapper in charts/<service>, which names the chart as its one
+# dependency, holds the overlay (default: an empty one) under the chart's name
+# and the defaults file as upstream-values.yaml.
+wrap() {
+  local env=$1 svc=$2 chart=$3 version=$4 repo=$5 defaults=$6
+  local empty="$chart: {}"; local overlay=${7-$empty}
+  mkdir -p "$env/manifests/$svc" "$env/charts/$svc"
+  cat > "$env/manifests/$svc/application.yaml" <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: $svc
+  namespace: argocd
+spec:
+  project: chorde
+  source:
+    repoURL: https://github.com/SafeChord/Chorde.git
+    targetRevision: main
+    path: gitops/k3han/charts/$svc
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: $svc
+EOF
+  cat > "$env/charts/$svc/Chart.yaml" <<EOF
+apiVersion: v2
+name: $svc
+version: 0.0.0
+dependencies:
+  - name: $chart
+    version: $version
+    repository: $repo
+EOF
+  printf '%s\n' "$overlay" > "$env/charts/$svc/values.yaml"
+  cp "$defaults" "$env/charts/$svc/upstream-values.yaml"
 }
 
-d=$(keda_env keda)
-expect "keda as committed" pass "$d"
+DIGEST=sha256:$(printf 'a%.0s' $(seq 64))
 
-d=$(keda_env keda)
-sed -i '0,/^[a-z]/s/^\([a-zA-Z]*\):/\1_edited:/' "$d/manifests/keda/values.yaml"
-expect "a default values.yaml edited by one line" fail "$d" "keda/values.yaml: differs"
-
-d=$(keda_env keda)
-rm "$d/manifests/keda/values.yaml"
-expect "a missing default values.yaml" fail "$d" "keda/values.yaml: missing"
-
-d=$(keda_env keda)
-# Move keda to another published release, whatever release it pins now.
-KEDA_AT=$(awk '/chart: keda/ {c=1; next} c && /targetRevision:/ {print $2; exit}' "$KEDA/application.yaml")
-KEDA_TO=2.17.1; [ "$KEDA_AT" = "$KEDA_TO" ] && KEDA_TO=2.17.0
-sed -i "s/targetRevision: ${KEDA_AT//./\\.}\$/targetRevision: $KEDA_TO/" "$d/manifests/keda/application.yaml"
-grep -q "targetRevision: $KEDA_TO\$" "$d/manifests/keda/application.yaml" || fail "fixture: keda's chart version ($KEDA_AT) was not found to move"
-expect "a version bump that keeps the old defaults" fail "$d" "keda/values.yaml: differs from keda $KEDA_TO"
-
-# Through check.py, so the fixture rides out a passing outage as the check does.
-python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from check import helm_show_values
-out, err = helm_show_values(*sys.argv[2:]); sys.exit(err) if err else sys.stdout.write(out)' \
-  "$HERE" https://kedacore.github.io/charts keda "$KEDA_TO" > "$d/manifests/keda/values.yaml" \
-  || fail "fixture: keda $KEDA_TO's defaults could not be read"
-expect "a version bump that regenerates the defaults" pass "$d"
-
-d=$(keda_env)
-rm "$d/manifests/keda/values.yaml"
-expect "a chart application no stage deploys is not checked" pass "$d"
-
-d=$(new_env)
-cp -r "$KEDA" "$d/manifests/argocd"
-rm "$d/manifests/argocd/values.yaml"
-expect "argocd, applied outside the stages, is checked too" fail "$d" "argocd/values.yaml: missing"
-
-d=$(EXCLUDE= keda_env keda)
-expect "a stage that renders values.yaml as a manifest" fail "$d" "keda/values.yaml: rendered as a manifest"
-
-d=$(EXCLUDE='{values.yaml,README.md}' keda_env keda)
-expect "a stage that excludes values.yaml among others" pass "$d"
-
-d=$(EXCLUDE='*/values.yaml' keda_env keda)
-expect "a stage whose exclude misses values.yaml at the directory root" fail "$d" "rendered as a manifest"
-
-echo "== chart downloads that fail (Chorde#63)"
 # A stand-in for helm on PATH: its first FAKE_HELM_FAILS runs print FAKE_HELM_ERR
 # (%n: the run's number) and exit 1, after FAKE_HELM_SLEEP seconds if set; later
-# runs print the demo chart's defaults. FAKE_HELM_STATE counts the runs.
+# runs print FAKE_HELM_OUT, by default the demo chart's defaults. FAKE_HELM_STATE
+# counts the runs.
 FAKEBIN="$TMP/fakebin"; mkdir -p "$FAKEBIN"
 cat > "$FAKEBIN/helm" <<'EOF'
 #!/usr/bin/env bash
 n=$(( $(cat "$FAKE_HELM_STATE" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$FAKE_HELM_STATE"
 if [ "$n" -le "${FAKE_HELM_FAILS:-0}" ]; then sleep "${FAKE_HELM_SLEEP:-0}"; echo "Error: ${FAKE_HELM_ERR//%n/$n}" >&2; exit 1; fi
-printf 'demo: true\n'
+printf '%s\n' "${FAKE_HELM_OUT:-demo: true}"
 EOF
 chmod +x "$FAKEBIN/helm"
+DEMO_DEFAULTS="$TMP/demo-defaults.yaml"; printf 'demo: true\n' > "$DEMO_DEFAULTS"
+# fake <command...>: run it with the stand-in helm, serving the demo chart.
+fake() { PATH="$FAKEBIN:$PATH" FAKE_HELM_STATE="$TMP/helm-runs.$RANDOM" "$@"; }
+# demo_env [overlay]: an env deploying the demo chart as svc, through a wrapper.
+demo_env() {
+  local dir; dir=$(new_env svc)
+  local empty='demo: {}'
+  wrap "$dir" svc demo 1.0.0 https://charts.example.test "$DEMO_DEFAULTS" "${1-$empty}"
+  echo "$dir"
+}
 
-DEMO=$(new_env demo)
-mkdir -p "$DEMO/manifests/demo"
-cat > "$DEMO/manifests/demo/application.yaml" <<'EOF'
+echo "== gitops/k3han"
+# Run from manifests/, where each chart name is also a directory name.
+RUN_IN="$REPO/gitops/k3han/manifests" \
+  expect "every chart is wrapped; every wrapper has its defaults; every own image is tag@digest" pass "$REPO/gitops/k3han"
+
+echo "== chart version and values at one revision (Chorde#77)"
+APP_OF() { echo "$1/manifests/svc/application.yaml"; }
+
+d=$(demo_env)
+fake expect "a chart in its wrapper, its Application pointing at it" pass "$d"
+
+# The layout before Chorde#77: the overlay through a ref source at main, the
+# version in the Application.
+d=$(demo_env); rm "$d/manifests/svc/application.yaml"
+cat > "$(APP_OF "$d")" <<'EOF'
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 spec:
   sources:
+    - repoURL: https://github.com/SafeChord/Chorde.git
+      targetRevision: main
+      ref: chorde-repo
     - repoURL: https://charts.example.test
       chart: demo
       targetRevision: 1.0.0
+      helm:
+        valueFiles:
+          - $chorde-repo/gitops/k3han/charts/svc/values.yaml
 EOF
-printf 'demo: true\n' > "$DEMO/manifests/demo/values.yaml"
+fake expect "a ref source carrying the overlay, the version in the Application" fail "$d" "source \`ref: chorde-repo\` reaches the application apart"
+grep -qF "names chart demo 1.0.0 itself" <<<"$LAST_OUT" && ok "  ... and the upstream chart it names itself" || fail "  ... and the upstream chart it names itself" "$LAST_OUT"
+grep -qF "helm.valueFiles carries values" <<<"$LAST_OUT" && ok "  ... and the values file it adds" || fail "  ... and the values file it adds" "$LAST_OUT"
+
+d=$(demo_env)
+cat > "$(APP_OF "$d")" <<'EOF'
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  source:
+    repoURL: https://charts.example.test
+    chart: demo
+    targetRevision: 1.0.0
+    helm:
+      valuesObject:
+        demo: false
+EOF
+fake expect "the upstream chart with its values inline in the Application" fail "$d" "manifests/svc/application.yaml: names chart demo 1.0.0 itself"
+
+for key in values valuesObject parameters fileParameters valueFiles; do
+  d=$(demo_env)
+  printf '    helm:\n      %s: {}\n' "$key" > "$TMP/helm-key"
+  sed -i "/path: gitops\/k3han\/charts\/svc/r $TMP/helm-key" "$(APP_OF "$d")"
+  fake expect "the wrapper with helm.$key in its Application" fail "$d" "helm.$key carries values apart"
+done
+
+d=$(demo_env)
+printf '    helm:\n      releaseName: other\n' > "$TMP/helm-key"
+sed -i "/path: gitops\/k3han\/charts\/svc/r $TMP/helm-key" "$(APP_OF "$d")"
+fake expect "the wrapper with a helm option that carries no values" pass "$d"
+
+d=$(demo_env)
+wrap "$d" other demo 1.0.0 https://charts.example.test "$DEMO_DEFAULTS"
+sed -i 's#charts/svc$#charts/other#' "$(APP_OF "$d")"
+fake expect "an Application pointing at another service's wrapper" fail "$d" "is not this service's wrapper, charts/svc"
+
+d=$(demo_env); rm -r "$d/charts/svc"
+fake expect "an Application pointing at a wrapper that is not there" fail "$d" "holds no Chart.yaml"
+
+d=$(demo_env); printf 'demo: {}\n' > "$d/manifests/svc/values-custom.yaml"
+fake expect "an overlay left in the stage directory" fail "$d" "manifests/svc/values-custom.yaml: chart values in a directory 00-test.yaml renders"
+
+d=$(demo_env); cp "$DEMO_DEFAULTS" "$d/manifests/svc/values.yaml"
+fake expect "chart defaults left in the stage directory" fail "$d" "manifests/svc/values.yaml: chart values"
+
+d=$(new_env); wrap "$d" svc demo 1.0.0 https://charts.example.test "$DEMO_DEFAULTS"
+mv "$d/manifests/svc" "$d/manifests/argocd"
+fake expect "argocd, applied outside the stages, is checked too" fail "$d" "manifests/argocd/application.yaml: source path gitops/k3han/charts/svc is not this service's wrapper"
+
+d=$(new_env)
+mkdir -p "$d/manifests/unlisted"
+printf 'apiVersion: argoproj.io/v1alpha1\nkind: Application\nspec:\n  sources:\n    - ref: chorde-repo\n' > "$d/manifests/unlisted/application.yaml"
+printf 'x: 1\n' > "$d/manifests/unlisted/values-custom.yaml"
+fake expect "an Application no stage deploys is not checked" pass "$d"
+
+echo "== wrapper charts"
+d=$(demo_env); sed -i 's/version: 1.0.0/version: ^1.0.0/' "$d/charts/svc/Chart.yaml"
+fake expect "a dependency version range" fail "$d" "charts/svc/Chart.yaml: dependency demo version \`^1.0.0\` is not an exact version"
+
+d=$(demo_env); sed -i 's/version: 1.0.0/version: "1.0.x"/' "$d/charts/svc/Chart.yaml"
+fake expect "a dependency version with a wildcard" fail "$d" "is not an exact version"
+
+d=$(demo_env); printf '  - name: extra\n    version: 1.0.0\n    repository: https://charts.example.test\n' >> "$d/charts/svc/Chart.yaml"
+fake expect "a wrapper with two dependencies" fail "$d" "charts/svc/Chart.yaml: declares 2 dependencies"
+
+d=$(demo_env); printf 'apiVersion: v2\nname: svc\nversion: 0.0.0\n' > "$d/charts/svc/Chart.yaml"
+fake expect "a wrapper with no dependency" fail "$d" "declares 0 dependencies"
+
+d=$(demo_env); printf 'dependencies: []\n' > "$d/charts/svc/Chart.lock"
+fake expect "a committed Chart.lock" fail "$d" "charts/svc/Chart.lock: pins the dependency apart from Chart.yaml"
+
+d=$(demo_env); mkdir -p "$d/charts/svc/charts"; : > "$d/charts/svc/charts/demo-1.0.0.tgz"
+fake expect "a committed charts/ directory" fail "$d" "charts/svc/charts: pins the dependency apart"
+
+d=$(demo_env); rm "$d/charts/svc/Chart.yaml"
+fake expect "a wrapper directory without Chart.yaml" fail "$d" "charts/svc: a wrapper directory without Chart.yaml"
+
+d=$(demo_env "$(printf 'demo:\n  replicas: 2\nreplicas: 3\n')")
+fake expect "an overlay key outside the chart's name, which helm ignores" fail "$d" "charts/svc/values.yaml: top-level key \`replicas\` reaches no chart"
+
+d=$(demo_env "$(printf 'global:\n  imageRegistry: reg.example\ndemo:\n  replicas: 2\n')")
+fake expect "an overlay with global values" pass "$d"
+
+d=$(demo_env "$(printf 'd:\n  replicas: 2\n')"); sed -i 's/  - name: demo/  - name: demo\n    alias: d/' "$d/charts/svc/Chart.yaml"
+fake expect "an overlay under the dependency's alias" pass "$d"
+
+d=$(demo_env "$(printf 'demo:\n  replicas: 2\n')"); sed -i 's/  - name: demo/  - name: demo\n    alias: d/' "$d/charts/svc/Chart.yaml"
+fake expect "an overlay under the name of an aliased dependency" fail "$d" "top-level key \`demo\` reaches no chart; values for demo go under \`d\`"
+
+d=$(demo_env); rm "$d/charts/svc/values.yaml"
+fake expect "a wrapper without values.yaml" fail "$d" "charts/svc/values.yaml: missing"
+
+echo "== chart defaults"
+# keda's defaults at two published releases whose defaults differ, read once through check.py, so
+# the fixture rides out a passing outage as the check does.
+keda_defaults() {
+  python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from check import helm_show_values
+out, err = helm_show_values(*sys.argv[2:]); sys.exit(err) if err else sys.stdout.write(out)' \
+    "$HERE" https://kedacore.github.io/charts keda "$1" > "$TMP/keda-$1.yaml" \
+    || fail "fixture: keda $1's defaults could not be read"
+}
+keda_defaults 2.17.1; keda_defaults 2.18.0
+keda_env() { # keda_env <version> <defaults version>
+  local dir; dir=$(new_env keda)
+  wrap "$dir" keda keda "$1" https://kedacore.github.io/charts "$TMP/keda-$2.yaml"
+  echo "$dir"
+}
+
+expect "keda 2.17.1 with its defaults" pass "$(keda_env 2.17.1 2.17.1)"
+
+d=$(keda_env 2.17.1 2.17.1)
+sed -i '0,/^[a-z]/s/^\([a-zA-Z]*\):/\1_edited:/' "$d/charts/keda/upstream-values.yaml"
+expect "upstream-values.yaml edited by one line" fail "$d" "charts/keda/upstream-values.yaml: differs"
+
+d=$(keda_env 2.17.1 2.17.1); rm "$d/charts/keda/upstream-values.yaml"
+expect "a missing upstream-values.yaml" fail "$d" "charts/keda/upstream-values.yaml: missing"
+
+expect "a version bump that keeps the old defaults" fail "$(keda_env 2.18.0 2.17.1)" "charts/keda/upstream-values.yaml: differs from keda 2.18.0"
+
+d=$(new_env)
+wrap "$d" keda keda 2.17.1 https://kedacore.github.io/charts "$TMP/keda-2.17.1.yaml"
+rm "$d/charts/keda/upstream-values.yaml"
+expect "a wrapper no stage deploys is checked too" fail "$d" "charts/keda/upstream-values.yaml: missing"
+
+echo "== chart downloads that fail (Chorde#63)"
+DEMO=$(demo_env)
 
 FETCH=https://github.com/example/charts/releases/download/demo-1.0.0/demo-1.0.0.tgz
 E504="failed to fetch $FETCH : 504 Gateway Timeout (run %n)"
@@ -181,12 +311,12 @@ flaky "429, then served" 1 "$E429" pass
 flaky "connection refused, then served" 1 "$EREFUSED" pass
 flaky "a client timeout, then served" 1 "$ETIMEOUT" pass
 
-printf 'demo: false\n' > "$DEMO/manifests/demo/values.yaml"
-flaky "504 once, then served, against a wrong values.yaml" 1 "$E504" fail "demo/values.yaml: differs from demo 1.0.0 defaults"
-printf 'demo: true\n' > "$DEMO/manifests/demo/values.yaml"
+printf 'demo: false\n' > "$DEMO/charts/svc/upstream-values.yaml"
+flaky "504 once, then served, against a wrong values.yaml" 1 "$E504" fail "charts/svc/upstream-values.yaml: differs from demo 1.0.0 defaults"
+printf 'demo: true\n' > "$DEMO/charts/svc/upstream-values.yaml"
 
 WINDOW=2 flaky "504 on every run fails, naming the chart, its version and the last error" 999 "$E504" fail \
-  "demo/values.yaml: cannot read the chart's defaults: helm show values --repo https://charts.example.test demo --version 1.0.0: Error: failed to fetch $FETCH : 504 Gateway Timeout"
+  "charts/svc/upstream-values.yaml: cannot read the chart's defaults: helm show values --repo https://charts.example.test demo --version 1.0.0: Error: failed to fetch $FETCH : 504 Gateway Timeout"
 runs "  ... after more than one run" '[ "$RUNS" -gt 1 ]'
 runs "  ... and the error it names is the last run's" 'grep -qF "(run $RUNS)" <<<"$LAST_OUT"'
 runs "  ... within the 2 s window and one more run" 'awk -v t="$TOOK" "BEGIN { exit !(t < 4) }"'
@@ -248,26 +378,30 @@ expect "Plan image name only (the controller adds spec.version)" pass "$(img_env
 expect "Plan image tag only" fail "$(img_env p.yaml "$(plan rancher/k3s-upgrade:v1.34.3-k3s1)")" "spec.upgrade.image"
 expect "Deployment image name only" fail "$(img_env d.yaml "$(deploy repo/app "busybox:1.36@$DIGEST")")" "repo/app\`"
 
-overlay() { printf 'controller:\n  image:\n%s\n' "$1"; }
-expect "overlay image.tag with digest" pass "$(img_env values-custom.yaml "$(overlay "    repository: repo/app
-    tag: v1.0
-    digest: $DIGEST")")"
-expect "overlay image.tag with sha" pass "$(img_env values-custom.yaml "$(overlay "    repository: repo/app
-    tag: v1.0
-    sha: ${DIGEST#sha256:}")")"
-expect "overlay image.tag without digest" fail "$(img_env values-custom.yaml "$(overlay "    repository: repo/app
-    tag: v1.0")")" "controller.image.tag"
-expect "overlay image.tag with an empty digest" fail "$(img_env values-custom.yaml "$(overlay "    repository: repo/app
-    tag: v1.0
-    digest: \"\"")")" "controller.image.tag"
-expect "overlay image as one string, tag only" fail "$(img_env values-custom.yaml "$(printf 'sidecar:\n  image: repo/app:1.0\n')")" "sidecar.image"
-expect "overlay image as one string, tag@digest" pass "$(img_env values-custom.yaml "$(printf 'sidecar:\n  image: repo/app:1.0@%s\n' "$DIGEST")")"
+# overlay <yaml under the chart's key>: an env deploying the demo chart with that
+# overlay, in its wrapper's values.yaml.
+overlay() { demo_env "$(printf 'demo:\n  controller:\n    image:\n%s\n' "$1")"; }
+fake expect "overlay image.tag with digest" pass "$(overlay "      repository: repo/app
+      tag: v1.0
+      digest: $DIGEST")"
+fake expect "overlay image.tag with sha" pass "$(overlay "      repository: repo/app
+      tag: v1.0
+      sha: ${DIGEST#sha256:}")"
+fake expect "overlay image.tag without digest" fail "$(overlay "      repository: repo/app
+      tag: v1.0")" "charts/svc/values.yaml demo.controller.image.tag"
+fake expect "overlay image.tag with an empty digest" fail "$(overlay "      repository: repo/app
+      tag: v1.0
+      digest: \"\"")" "demo.controller.image.tag"
+fake expect "overlay image as one string, tag only" fail "$(demo_env "$(printf 'demo:\n  sidecar:\n    image: repo/app:1.0\n')")" "demo.sidecar.image"
+fake expect "overlay image as one string, tag@digest" pass "$(demo_env "$(printf 'demo:\n  sidecar:\n    image: repo/app:1.0@%s\n' "$DIGEST")")"
 
 expect "a kustomization's manifest under kustomize/, tag@digest" pass "$(TREE=kustomize img_env cronjob.yaml "$(deploy "repo/app:1.0@$DIGEST" "busybox:1.36@$DIGEST")")"
-expect "a kustomization's manifest under kustomize/, tag only" fail "$(TREE=kustomize img_env cronjob.yaml "$(deploy repo/app:1.0 "busybox:1.36@$DIGEST")")" "../kustomize/svc/cronjob.yaml"
+expect "a kustomization's manifest under kustomize/, tag only" fail "$(TREE=kustomize img_env cronjob.yaml "$(deploy repo/app:1.0 "busybox:1.36@$DIGEST")")" "kustomize/svc/cronjob.yaml"
 
-d=$(img_env values.yaml "$(deploy repo/app:1.0 busybox:1.36)")
-expect "a chart's default values.yaml is not checked for pins" pass "$d"
+d=$(demo_env)
+deploy repo/app:1.0 busybox:1.36 > "$d/charts/svc/upstream-values.yaml"
+FAKE_HELM_OUT=$(cat "$d/charts/svc/upstream-values.yaml") \
+  fake expect "a chart's default upstream-values.yaml is not checked for pins" pass "$d"
 
 if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
   echo "== K3han runs the pinned digests"

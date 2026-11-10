@@ -9,3 +9,8 @@ secrets/
 *unsealed-secret.yaml
 unsealed-*
 
+
+# A wrapped chart's dependency is built by Argo CD from Chart.yaml, the one
+# place its version is written (Docs safechord.chorde.md section 4, item 1).
+gitops/*/charts/*/charts/
+gitops/*/charts/*/Chart.lock
