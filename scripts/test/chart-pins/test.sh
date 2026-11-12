@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Requirement tests for chart applications, chart defaults and image pins
-# (Chorde#45, Chorde#77).
+# (Chorde#45, Chorde#77, Chorde#69).
 #
 # Runs check.py against gitops/k3han, then against small trees built in a temp
 # directory, each breaking or keeping the rule one way, so the check is shown
@@ -8,7 +8,8 @@
 #
 #   scripts/test/chart-pins/test.sh
 #   CHART_PINS_CLUSTER=1 scripts/test/chart-pins/test.sh   # also compares each
-#                       pinned digest with the one K3han runs (kubectl, jq)
+#                       pinned digest with the one K3han runs in the pin's
+#                       namespace (kubectl, jq; Chorde#69)
 #
 # Needs: bash, python3 with PyYAML, helm with network access to the keda chart
 # repository and to every chart gitops/k3han deploys.
@@ -404,26 +405,59 @@ FAKE_HELM_OUT=$(cat "$d/charts/svc/upstream-values.yaml") \
   fake expect "a chart's default upstream-values.yaml is not checked for pins" pass "$d"
 
 if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
-  echo "== K3han runs the pinned digests"
-  # Each self-pinned image whose repository runs must run at the pinned digest.
-  # An image no pod runs (a Job image between runs) is listed, not compared.
-  running=$(kubectl get pods -A -o json | jq -r '.items[].status
-    | ((.containerStatuses // []) + (.initContainerStatuses // []))[] | .imageID' | sort -u)
+  echo "== K3han runs the pinned digests (Chorde#69)"
+  # Each self-pinned image, a tag-only pin in a wrapper as its chart renders it,
+  # must run at the pinned digest in the namespace its service deploys to; what
+  # another owner runs elsewhere does not count. An image no pod there runs (a
+  # Job image between runs) is listed, not compared.
+  running=$(kubectl get pods -A -o json | jq -r '.items[] | .metadata.namespace as $ns | .status
+    | ((.containerStatuses // []) + (.initContainerStatuses // []))[] | "\($ns)\t\(.imageID)"' | sort -u)
   norm() { # docker.io/library/x, docker.io/x and x name the same repository
     sed -E 's#^docker\.io/##; s#^library/##' <<<"$1"
   }
-  while IFS=$'\t' read -r ref where; do
-    repo=$(norm "${ref%%@*}"); repo=${repo%:*}
-    digest=${ref##*@}
-    seen=$(while read -r id; do [ "$(norm "${id%%@*}")" = "$repo" ] && echo "${id##*@}"; done <<<"$running" | sort -u)
-    if [ -z "$seen" ]; then
-      echo "  --   $where: $repo runs nowhere; not compared"
-    elif [ "$seen" = "$digest" ]; then
-      ok "$where runs $repo@$digest"
-    else
-      fail "$where pins $digest" "running: $(tr '\n' ' ' <<<"$seen")"
-    fi
-  done < <(python3 "$CHECK" --list-pins "$REPO/gitops/k3han")
+  # compare_cluster <env-dir>: one ok, FAIL or -- line per pin of the env.
+  compare_cluster() {
+    local pins rc ref where ns repo digest seen
+    pins=$(python3 "$CHECK" --list-pins "$1" 2>&1); rc=$?
+    if [ $rc -ne 0 ]; then fail "check.py --list-pins $1 (rc $rc)" "$pins"; return; fi
+    while IFS=$'\t' read -r ref where ns; do
+      repo=$(norm "${ref%%@*}"); repo=${repo%:*}
+      digest=${ref##*@}
+      if [ -z "$ns" ]; then
+        fail "$where: names no namespace its image runs in"; continue
+      elif [ -z "$repo" ]; then
+        echo "  --   $where: renders into no image of its chart; not compared"; continue
+      fi
+      seen=$(while IFS=$'\t' read -r pod_ns id; do
+        [ "$pod_ns" = "$ns" ] && [ "$(norm "${id%%@*}")" = "$repo" ] && echo "${id##*@}"
+      done <<<"$running" | sort -u)
+      if [ -z "$seen" ]; then
+        echo "  --   $where: $repo runs nowhere in $ns; not compared"
+      elif [ "$seen" = "$digest" ]; then
+        ok "$where runs $repo@$digest in $ns"
+      else
+        fail "$where pins $digest" "running in $ns: $(tr '\n' ' ' <<<"$seen")"
+      fi
+    done <<<"$pins"
+  }
+  compare_cluster "$REPO/gitops/k3han"
+
+  echo "== the comparison catches what it guards (Chorde#69)"
+  # cluster_case <name> <sed expression> <file under gitops/k3han> <pattern>: a copy of
+  # gitops/k3han with the file edited must fail with a line holding the pattern.
+  cluster_case() {
+    local d out; d=$(mktemp -d "$TMP/k3han.XXXX"); cp -r "$REPO/gitops/k3han/." "$d"
+    sed -i "$2" "$d/$3"
+    out=$( (FAIL=0; compare_cluster "$d"; exit $((FAIL > 0))) ); local rc=$?
+    if [ $rc -eq 1 ] && grep -qF -- "$4" <<<"$out"; then ok "$1"; else fail "$1 (rc $rc)" "$out"; fi
+  }
+  OTHER=sha256:$(printf '0%.0s' $(seq 64))
+  cluster_case "a tag-only pin whose digest K3han does not run" \
+    "/^  loki:/,/^  [a-z]/s/\(tag: 3\.7\.9@\)sha256:[0-9a-f]*/\1$OTHER/" charts/loki/values.yaml \
+    "FAIL charts/loki/values.yaml loki.loki.image pins $OTHER"
+  cluster_case "a pin compared in a namespace that runs another digest of its repository" \
+    "0,/namespace: redis/s//namespace: safezone/" manifests/valkey/statefulset.yaml \
+    "FAIL manifests/valkey/statefulset.yaml spec.template.spec.containers.0.image pins"
 fi
 
 echo
