@@ -37,7 +37,8 @@ must carry a digest. The second and the third must render the same images, so
 each pin's tag is the one the chart renders when the overlay sets none. An image
 is a string under an `image`, `imageName` or `*_image` key, an `image` map of
 repository and tag (NGF's NginxProxy), an env var named `*_IMAGE`, `*_IMAGES`
-or `*IMAGE_NAME`, or a flag whose value is an image with a tag or a digest; a
+or `*IMAGE_NAME`, or an env var or a flag whose value is an image with a tag or
+a digest; a
 CustomResourceDefinition is not read. The operand images an operator maps per operand version (OPERAND_MAPS)
 are left to the operator, by tag. A dependency named by a file:// repository is
 read from that directory, relative to the wrapper.
@@ -387,10 +388,16 @@ def check_images(env_dir):
 # ---------------------------------------------------------------------------
 
 ENV_IMAGE = re.compile(r"(^|_)IMAGES?$|IMAGE_NAME$", re.IGNORECASE)
-# A flag whose value is an image reference with a tag or a digest, whatever the
-# flag is named (kube-prometheus-stack's --prometheus-config-reloader=<image>);
-# a URL or a path is not one.
-FLAG_IMAGE = re.compile(r"^--?[\w.-]+=([a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[\w./-]+(?::[\w.-]+)?(?:@sha256:[0-9a-f]{64})?)$")
+# An image reference with a path and a tag or a digest; a URL or a path is not one.
+IMAGE_REF = re.compile(r"^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[\w./-]+(?::[\w.-]+)?(?:@sha256:[0-9a-f]{64})?$")
+# A flag whose value is an image, whatever the flag is named
+# (kube-prometheus-stack's --prometheus-config-reloader=<image>).
+FLAG_IMAGE = re.compile(r"^--?[\w.-]+=(\S+)$")
+
+
+def is_image_ref(value):
+    """An image reference with a tag or a digest, as an env var or a flag hands it on."""
+    return bool(IMAGE_REF.match(value)) and (":" in value.rsplit("/", 1)[-1] or "@" in value)
 
 
 def split_image(node):
@@ -426,13 +433,17 @@ def rendered_images(docs):
                 elif isinstance(v, list):
                     for i, x in enumerate(v):
                         m = FLAG_IMAGE.match(x.strip()) if isinstance(x, str) else None
-                        if m and (":" in m.group(1).rsplit("/", 1)[-1] or "@" in m.group(1)):
+                        if m and is_image_ref(m.group(1)):
                             images.append((f"{what} {dot}{k}.{i}", m.group(1)))
-            name = node.get("name")
-            if isinstance(name, str) and ENV_IMAGE.search(name) and isinstance(node.get("value"), str):
-                if name not in OPERAND_MAPS:
-                    for token in node["value"].split():
+            # An env var: named for an image, or whose value is one (strimzi's
+            # STRIMZI_DEFAULT_MAVEN_BUILDER).
+            name, value = node.get("name"), node.get("value")
+            if isinstance(name, str) and isinstance(value, str) and name not in OPERAND_MAPS:
+                if ENV_IMAGE.search(name):
+                    for token in value.split():
                         images.append((f"{what} {dot}value", token.split("=", 1)[-1]))
+                elif is_image_ref(value.strip()):
+                    images.append((f"{what} {dot}value", value.strip()))
 
         walk(doc, [], visit)
     return images
