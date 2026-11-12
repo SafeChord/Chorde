@@ -635,6 +635,8 @@ if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
     if [ $rc -eq 1 ] && grep -qF -- "$4" <<<"$out"; then ok "$1"; else fail "$1 (rc $rc)" "$out"; fi
   }
   OTHER=sha256:$(printf '0%.0s' $(seq 64))
+  # A bare digest of digits alone reads as a YAML integer; a sha key takes letters.
+  OTHER_HEX=sha256:$(printf 'b%.0s' $(seq 64))
   cluster_case "a tag-only pin whose digest K3han does not run" \
     "/^  loki:/,/^  [a-z]/s/\(tag: 3\.7\.9@\)sha256:[0-9a-f]*/\1$OTHER/" charts/loki/values.yaml \
     "FAIL charts/loki/values.yaml loki.loki.image pins $OTHER"
@@ -642,8 +644,8 @@ if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
     "0,/namespace: redis/s//namespace: safezone/" manifests/valkey/statefulset.yaml \
     "FAIL manifests/valkey/statefulset.yaml spec.template.spec.containers.0.image pins"
   cluster_case "a pin through a digest key whose digest K3han does not run" \
-    "/^    prometheusSpec:/,/^    [a-z]/s/\(sha: \)[0-9a-f]\{64\}/\1${OTHER#sha256:}/" charts/prometheus/values.yaml \
-    "FAIL charts/prometheus/values.yaml kube-prometheus-stack.prometheus.prometheusSpec.image pins $OTHER"
+    "/^    prometheusSpec:/,/^    [a-z]/s/\(sha: \)[0-9a-f]\{64\}/\1${OTHER_HEX#sha256:}/" charts/prometheus/values.yaml \
+    "FAIL charts/prometheus/values.yaml kube-prometheus-stack.prometheus.prometheusSpec.image pins $OTHER_HEX"
   cluster_case "a pin held as repository and tag apart whose digest K3han does not run" \
     "/^  nginx:/,\$s/\(tag: 2\.8\.1@\)sha256:[0-9a-f]*/\1$OTHER/" charts/nginx-gateway-fabric/values.yaml \
     "FAIL charts/nginx-gateway-fabric/values.yaml nginx-gateway-fabric.nginx.image pins $OTHER"
