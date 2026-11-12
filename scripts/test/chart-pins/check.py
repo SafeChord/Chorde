@@ -19,11 +19,29 @@ Docs safechord.chorde.md section 4, item 1:
    as tag@digest. Images a chart picks by default are not checked. The
    manifests are those under manifests/ and kustomize/, where a service a
    kustomization renders keeps its source (Chorde#54).
+4. Every image a wrapper renders carries a digest, and a pin's tag is the one
+   the chart's version renders by default (Chorde#53). Checked with
+   --rendered, which renders every wrapper.
 
-    check.py <gitops-env-dir>      e.g. gitops/k3han
+    check.py <gitops-env-dir>      e.g. gitops/k3han; rules 1 to 3
+    check.py --rendered <gitops-env-dir>
+                                   rule 4
     check.py --list-pins <gitops-env-dir>
                                    print each self-pinned image, where it is
                                    pinned and the namespace it runs in
+
+--rendered renders each wrapper under charts/ three times with helm template:
+with its overlay as it is, with every digest taken out of the overlay, and with
+every pin taken out (its tag, digest and sha keys). In the first, every image
+must carry a digest. The second and the third must render the same images, so
+each pin's tag is the one the chart renders when the overlay sets none. An image
+is a string under an `image`, `imageName` or `*_image` key, an `image` map of
+repository and tag (NGF's NginxProxy), an env var named `*_IMAGE`, `*_IMAGES`
+or `*IMAGE_NAME`, or an env var or a flag whose value is an image with a tag or
+a digest; a
+CustomResourceDefinition is not read. The operand images an operator maps per operand version (OPERAND_MAPS)
+are left to the operator, by tag. A dependency named by a file:// repository is
+read from that directory, relative to the wrapper.
 
 --list-pins prints `<image>\t<where>\t<namespace>` per pin. A pin in a
 wrapper's values.yaml names the image its chart renders from it: the wrapper is
@@ -75,6 +93,12 @@ TRANSIENT = re.compile(
     re.IGNORECASE)
 IMAGE_KEY = re.compile(r"^(image|imagename)$|_image$", re.IGNORECASE)
 DIGEST_KEYS = ("digest", "sha")
+# Env vars through which strimzi maps each Kafka version to an operand image:
+# left to the operator by tag (Docs safechord.chorde.md section 4, item 1).
+OPERAND_MAPS = {
+    "STRIMZI_KAFKA_IMAGES", "STRIMZI_KAFKA_CONNECT_IMAGES", "STRIMZI_KAFKA_MIRROR_MAKER_2_IMAGES",
+    "STRIMZI_DEFAULT_KAFKA_EXPORTER_IMAGE", "STRIMZI_DEFAULT_CRUISE_CONTROL_IMAGE",
+}
 
 findings = []
 pins = []  # (where, ref, namespace) of every image Chorde pins itself
@@ -301,15 +325,17 @@ def check_overlay_images(rel, doc, namespace=""):
             if isinstance(v, str) and IMAGE_KEY.search(str(k)):
                 check_ref(f"{rel} {here + '.' if here else ''}{k}", v, namespace)
         tag = node.get("tag")
-        if tag not in (None, ""):
-            tag = str(tag)
-            digest = next((str(node[k]) for k in DIGEST_KEYS if node.get(k)), "")
-            ref = f"{node.get('registry', '')}/{node.get('repository', '')}:{tag}".lstrip("/")
-            if digest and "@" not in tag:
-                ref += "@" + (digest if digest.startswith("sha256:") else "sha256:" + digest)
-            pins.append((f"{rel} {here}", ref, namespace))
-            if not (DIGEST.search(tag) or re.fullmatch(r"(sha256:)?[0-9a-f]{64}", digest)):
-                find(f"{rel} {here}.tag", f"tag `{tag}` is set without a digest")
+        tag = "" if tag is None else str(tag)
+        digest = next((str(node[k]) for k in DIGEST_KEYS if node.get(k)), "")
+        if not (tag or digest):
+            return
+        ref = f"{node.get('registry', '')}/{node.get('repository', '')}".lstrip("/") + (f":{tag}" if tag else "")
+        if digest and "@" not in tag:
+            ref += "@" + (digest if digest.startswith("sha256:") else "sha256:" + digest)
+        # A pin set through a digest key alone leaves the tag to the chart (Chorde#53).
+        pins.append((f"{rel} {here}", ref, namespace))
+        if tag and not (DIGEST.search(tag) or re.fullmatch(r"(sha256:)?[0-9a-f]{64}", digest)):
+            find(f"{rel} {here}.tag", f"tag `{tag}` is set without a digest")
 
     walk(doc, [], visit)
 
@@ -357,42 +383,171 @@ def check_images(env_dir):
 
 
 # ---------------------------------------------------------------------------
-# Pins as the chart renders them (--list-pins, Chorde#69)
+# Rendered images (--rendered, Chorde#53) and pins as the chart renders them
+# (--list-pins, Chorde#69)
 # ---------------------------------------------------------------------------
+
+ENV_IMAGE = re.compile(r"(^|_)IMAGES?$|IMAGE_NAME$", re.IGNORECASE)
+# An image reference with a path and a tag or a digest; a URL or a path is not one.
+IMAGE_REF = re.compile(r"^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[\w./-]+(?::[\w.-]+)?(?:@sha256:[0-9a-f]{64})?$")
+# A flag whose value is an image, whatever the flag is named
+# (kube-prometheus-stack's --prometheus-config-reloader=<image>).
+FLAG_IMAGE = re.compile(r"^--?[\w.-]+=(\S+)$")
+
+
+def is_image_ref(value):
+    """An image reference with a tag or a digest, as an env var or a flag hands it on."""
+    return bool(IMAGE_REF.match(value)) and (":" in value.rsplit("/", 1)[-1] or "@" in value)
+
+
+def split_image(node):
+    """The image an `image` map of repository and tag renders, or None."""
+    if not (isinstance(node, dict) and node.get("repository")):
+        return None
+    ref = f"{node.get('registry') or ''}/{node['repository']}".lstrip("/")
+    if node.get("tag") not in (None, ""):
+        ref += f":{node['tag']}"
+    digest = next((str(node[k]) for k in DIGEST_KEYS if node.get(k)), "")
+    if digest and "@" not in ref:
+        ref += "@" + (digest if digest.startswith("sha256:") else "sha256:" + digest)
+    return ref
+
+
+def rendered_images(docs):
+    """(where, ref) of every image the rendered documents name, operand maps aside."""
+    images = []
+    for doc in docs:
+        if not isinstance(doc, dict) or doc.get("kind") == "CustomResourceDefinition":
+            continue
+        meta = doc.get("metadata") or {}
+        what = f"{doc.get('kind')}/{meta.get('name')}"
+
+        def visit(node, path):
+            here = ".".join(path)
+            dot = here + "." if here else ""
+            for k, v in node.items():
+                if isinstance(v, str) and v.strip() and IMAGE_KEY.search(str(k)):
+                    images.append((f"{what} {dot}{k}", v.strip()))
+                elif str(k) == "image" and split_image(v):
+                    images.append((f"{what} {dot}{k}", split_image(v)))
+                elif isinstance(v, list):
+                    for i, x in enumerate(v):
+                        m = FLAG_IMAGE.match(x.strip()) if isinstance(x, str) else None
+                        if m and is_image_ref(m.group(1)):
+                            images.append((f"{what} {dot}{k}.{i}", m.group(1)))
+            # An env var: named for an image, or whose value is one (strimzi's
+            # STRIMZI_DEFAULT_MAVEN_BUILDER).
+            name, value = node.get("name"), node.get("value")
+            if isinstance(name, str) and isinstance(value, str) and name not in OPERAND_MAPS:
+                if ENV_IMAGE.search(name):
+                    for token in value.split():
+                        images.append((f"{what} {dot}value", token.split("=", 1)[-1]))
+                elif is_image_ref(value.strip()):
+                    images.append((f"{what} {dot}value", value.strip()))
+
+        walk(doc, [], visit)
+    return images
+
+
+def pull_wrapper(env_dir, service, tmp):
+    """Copy the wrapper into tmp with its dependency fetched; (chart dir, None) or (None, error)."""
+    top = os.path.join(env_dir, "charts", service)
+    dep = ((load_all(os.path.join(top, "Chart.yaml")) or [{}])[0].get("dependencies") or [{}])[0]
+    chart = os.path.join(tmp, service)
+    shutil.copytree(top, chart, ignore=shutil.ignore_patterns("Chart.lock", "charts"))
+    deps = os.path.join(chart, "charts")
+    os.mkdir(deps)
+    repo = str(dep.get("repository", ""))
+    if repo.startswith("file://"):
+        src = os.path.join(top, repo[len("file://"):])
+        if not os.path.isfile(os.path.join(src, "Chart.yaml")):
+            return None, f"{repo}: no chart there"
+        shutil.copytree(src, os.path.join(deps, str(dep.get("name"))))
+        return chart, None
+    _, err = helm_run(["helm", "pull", *chart_ref(repo, str(dep.get("name"))),
+                       "--version", str(dep.get("version")), "--untar", "--destination", deps])
+    return (None, err) if err else (chart, None)
+
+
+def template(chart, service, namespace, values=None):
+    """The documents the chart renders, with values.yaml replaced by values if given."""
+    if values is not None:
+        with open(os.path.join(chart, "values.yaml"), "w") as f:
+            yaml.safe_dump_all(values, f)
+    cmd = ["helm", "template", service, chart, "--namespace", namespace or "default"]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        lines = out.stderr.strip().splitlines()
+        return None, " ".join(cmd) + ": " + (lines[-1] if lines else f"exit status {out.returncode}")
+    return [d for d in yaml.safe_load_all(out.stdout) if d is not None], None
+
+
+def render_wrapper(env_dir, service, namespace):
+    """Every image the wrapper renders with its overlay, or (None, error)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        chart, err = pull_wrapper(env_dir, service, tmp)
+        docs, err = (None, err) if err else template(chart, service, namespace)
+    if err:
+        return None, err
+    return {ref for _, ref in rendered_images(docs) if RENDERED_REF.match(ref)}, None
+
 
 RENDERED_REF = re.compile(r"^[^\s@]+@sha256:[0-9a-f]{64}$")
 
 
-def render_wrapper(env_dir, service, namespace):
-    """Every image-like string the wrapper renders with its overlay, or (None, error)."""
-    top = os.path.join(env_dir, "charts", service)
-    dep = ((load_all(os.path.join(top, "Chart.yaml")) or [{}])[0].get("dependencies") or [{}])[0]
-    with tempfile.TemporaryDirectory() as tmp:
-        chart = os.path.join(tmp, service)
-        shutil.copytree(top, chart, ignore=shutil.ignore_patterns("Chart.lock", "charts"))
-        deps = os.path.join(chart, "charts")
-        os.mkdir(deps)
-        _, err = helm_run(["helm", "pull", *chart_ref(str(dep.get("repository", "")), str(dep.get("name"))),
-                           "--version", str(dep.get("version")), "--untar", "--destination", deps])
+def unpin(node, keep_tags):
+    """The overlay with its pins taken out: digests only (keep_tags), or tags too."""
+    if isinstance(node, list):
+        return [unpin(x, keep_tags) for x in node]
+    if not isinstance(node, dict):
+        return node
+    out = {}
+    pinned = any(node.get(k) for k in DIGEST_KEYS) or "@" in str(node.get("tag") or "")
+    for k, v in node.items():
+        if k in DIGEST_KEYS and v and re.fullmatch(r"(sha256:)?[0-9a-f]{64}", str(v)):
+            continue
+        if k == "tag" and pinned:
+            if keep_tags and str(v or "").split("@", 1)[0]:
+                out[k] = str(v).split("@", 1)[0]
+            continue
+        if isinstance(v, str) and IMAGE_KEY.search(str(k)) and DIGEST.search(v):
+            if keep_tags:
+                out[k] = v.split("@", 1)[0]
+            continue
+        out[k] = unpin(v, keep_tags)
+    return out
+
+
+def check_rendered(env_dir):
+    charts = os.path.join(env_dir, "charts")
+    for service in sorted(os.listdir(charts)) if os.path.isdir(charts) else []:
+        top = os.path.join(charts, service)
+        if not os.path.isfile(os.path.join(top, "Chart.yaml")):
+            continue
+        rel = f"charts/{service}"
+        dep = ((load_all(os.path.join(top, "Chart.yaml")) or [{}])[0].get("dependencies") or [{}])[0]
+        overlay = load_all(os.path.join(top, "values.yaml")) if os.path.isfile(os.path.join(top, "values.yaml")) else []
+        namespace = destination_namespace(env_dir, service)
+        renders = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            chart, err = pull_wrapper(env_dir, service, tmp)
+            for variant, values in (("pinned", None), ("tags", [unpin(d, True) for d in overlay]),
+                                    ("defaults", [unpin(d, False) for d in overlay])):
+                if err:
+                    break
+                docs, err = template(chart, service, namespace, values)
+                renders[variant] = dict(rendered_images(docs or []))
         if err:
-            return None, err
-        cmd = ["helm", "template", service, chart, "--namespace", namespace or "default"]
-        out = subprocess.run(cmd, capture_output=True, text=True)
-        if out.returncode != 0:
-            lines = out.stderr.strip().splitlines()
-            return None, " ".join(cmd) + ": " + (lines[-1] if lines else f"exit status {out.returncode}")
-    found = set()
-
-    def visit(node, path):
-        for v in node.values():
-            if isinstance(v, str) and RENDERED_REF.match(v.strip()):
-                found.add(v.strip())
-            elif isinstance(v, list):
-                found.update(x.strip() for x in v if isinstance(x, str) and RENDERED_REF.match(x.strip()))
-
-    for doc in yaml.safe_load_all(out.stdout):
-        walk(doc, [], visit)
-    return found, None
+            find(rel, f"cannot render the wrapper: {err}")
+            continue
+        for where, ref in sorted(renders["pinned"].items()):
+            if not DIGEST.search(ref):
+                find(rel, f"{where} renders {ref} without a digest")
+        for where, ref in sorted(renders["tags"].items()):
+            default = renders["defaults"].get(where)
+            if default is not None and default != ref:
+                find(rel, f"{where} renders {renders['pinned'].get(where, ref)} from its pin; "
+                          f"{dep.get('name')} {dep.get('version')} renders {default} there by default")
 
 
 def rendered_pins(env_dir):
@@ -421,6 +576,11 @@ def main():
         for where, ref, namespace in rendered_pins(args[1]):
             print(f"{ref}\t{where}\t{namespace}")
         sys.exit(0)
+    if args[:1] == ["--rendered"] and len(args) == 2:
+        check_rendered(args[1])
+        for line in findings:
+            print(line)
+        sys.exit(1 if findings else 0)
     if len(args) != 1:
         sys.exit(__doc__)
     env_dir = args[0]
