@@ -44,6 +44,9 @@ kube-prometheus-stack:
         - /etc/alertmanager/config/*.tmpl
 
     alertmanagerSpec:
+      # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+      image:
+        sha: 39d8bb3966c694a124428a3a88fbcffd40bd069129ecd47c059f8a3f17c55f3b
       secrets:
         - alertmanager-slack-secret
       affinity:
@@ -59,6 +62,14 @@ kube-prometheus-stack:
           effect: NoSchedule
 
   grafana:
+    # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+    # The test pod is a helm test hook; its digest is the one its tag resolved to when
+    # pinned (2026-11-12).
+    image:
+      sha: 540b8afb775bf34aefce417e4329039daa5d44b6f2fbda6881397b1b247ca7df
+    testFramework:
+      image:
+        tag: 1.14.0@sha256:5322b877351fda0cc435de8c6116de7d0a2ec79d7c680132a0ef329a633bc66f
     serviceMonitor:
       enabled: false
     admin:
@@ -84,6 +95,8 @@ kube-prometheus-stack:
         serve_from_sub_path: true
 
     sidecar:
+      image:
+        sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
       datasources:
         enabled: true
         defaultDatasourceEnabled: true
@@ -102,6 +115,9 @@ kube-prometheus-stack:
         effect: NoSchedule
 
   kube-state-metrics:
+    # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+    image:
+      sha: sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -172,6 +188,9 @@ kube-prometheus-stack:
           replacement: '100.64.2.21:$1'
 
   prometheus-node-exporter:
+    # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+    image:
+      digest: sha256:8c9bac11973b94b59be88d6e11fee4429aa743c8846cdc75d65b18db33f6a106
     # to aviod node exporter mount the root directory on machines
     hostRootFsMount:
       enabled: false
@@ -195,6 +214,21 @@ kube-prometheus-stack:
             replacement: '100.64.2.21:$1'
 
   prometheusOperator:  
+    # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+    # thanosImage is handed to the operator for a Thanos sidecar or ruler, and the
+    # admission patch image runs only in hook jobs at each sync: neither runs long on
+    # K3han, so their digests are the ones their tags resolved to when pinned (2026-11-12).
+    image:
+      sha: c7edf0379b7271ef1705dce258d2bb73820e299cc95559369e9f6fc3321639ec
+    prometheusConfigReloader:
+      image:
+        sha: a1897c67478bc23434534e91ad3855280771196b1daf17144db9dbcb655bef71
+    thanosImage:
+      sha: 0a546b98a8dd47735456ab389983675ee363d68127e334937a9fceeea10da5e7
+    admissionWebhooks:
+      patch:
+        image:
+          sha: 778d97dc3986355625e14392419b3364c487a7c807d4d86ddad1df369129b082
     affinity:
       nodeAffinity:
         requiredDuringSchedulingIgnoredDuringExecution:
@@ -209,6 +243,9 @@ kube-prometheus-stack:
 
   prometheus:
     prometheusSpec:
+      # Pinned by digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+      image:
+        sha: 9764044e09eb2c9e1abdb12d0f0188d4efb7384b0262d3c080f0fc59045c89ba
       # the record be reserved in 7 days
       retention: 7d
       affinity:
