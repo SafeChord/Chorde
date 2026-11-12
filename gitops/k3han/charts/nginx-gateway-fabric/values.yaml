@@ -4,6 +4,11 @@ nginx-gateway-fabric:
   # Data-plane placement + resource limits live in the per-Gateway NginxProxy CR
   # (manifests/private-gateway/gateway.yaml), not here.
   nginxGateway:
+    # Pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); moves with the
+    # chart version. The chart has no digest key. The cert-generator hook job runs this
+    # image too.
+    image:
+      tag: 2.8.1@sha256:f0aa8a3b301dc594f300e566060cdb7e75b6425c076e2fc62e4ce96f6e78b766
     # The control plane only watches the K8s API and renders nginx config — it is
     # lightweight and not on the request hot path, so it can stay modest.
     resources:
@@ -23,3 +28,10 @@ nginx-gateway-fabric:
       - key: node-role.kubernetes.io/control-plane
         effect: NoSchedule
         operator: Exists
+
+  # The data-plane image. The chart writes it into the GatewayClass-level NginxProxy;
+  # the control plane provisions each Gateway's nginx Deployment as `<repository>:<tag>`,
+  # so tag@digest renders a digest-pinned image. Pinned as above.
+  nginx:
+    image:
+      tag: 2.8.1@sha256:20682e5ea9263d914ffd032bea14bf83a5c284f23f079647b269205297bbc3e6
