@@ -30,7 +30,10 @@ strimzi-kafka-operator:
   # Images pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); they move
   # with the chart version. The entity operator's topic and user operators run the
   # operator image through keys of their own. The Kafka image is left to the operator's
-  # own version map, by tag: see strimzi-kafka/kafka-cluster.yaml.
+  # own version map, by tag: see strimzi-kafka/kafka-cluster.yaml, and so are the exporter
+  # and cruise-control images it maps the same way. The operator is handed the kafka-init,
+  # bridge, buildah and maven-builder images but runs none of them on K3han: those
+  # digests are the ones their tags resolved to when pinned (2026-11-12).
   image:
     tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
   topicOperator:
@@ -39,3 +42,15 @@ strimzi-kafka-operator:
   userOperator:
     image:
       tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
+  kafkaInit:
+    image:
+      tag: 1.3.1@sha256:55f43849559a0d151be473c588c89e9d72649ecadf088c8b9d92d37654a5e5eb
+  kafkaBridge:
+    image:
+      tag: 1.2.1@sha256:4597700f87ab33b7768863728730bc2eb68a0d7fa9633ab2a4cebb3a2730cfa9
+  buildah:
+    image:
+      tag: 1.3.1@sha256:7a2f75ee2a66b5cd83ebadf9be5efdf452e31cf006714e8f46f8ce16b3806b98
+  mavenBuilder:
+    image:
+      tag: 1.3.1@sha256:ce67465a4df0fa0a684e64962d6d4fff0b767636ae18e2ee7834bba14f5e4813

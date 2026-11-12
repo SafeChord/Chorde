@@ -1,5 +1,13 @@
 # Chorde's overlay; the chart reads only what sits under its name.
 alloy:
+  # Pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+  # The chart writes image.tag into the app.kubernetes.io/version label, where `@` is not
+  # allowed, so the digest goes in its own key; the chart then renders the image by digest
+  # alone and the tag stays here as the record of what it is.
+  image:
+    tag: v1.21.3
+    digest: sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
+
   controller:
     type: daemonset
     nodeSelector:

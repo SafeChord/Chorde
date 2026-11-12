@@ -155,3 +155,7 @@ loki:
   sidecar:
     image:
       tag: 2.14.3@sha256:52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
+
+  lokiCanary:
+    image:
+      tag: 3.7.9@sha256:affa9bbdd475832d38d4d774dbefcccd946bd42bf05011174de33f454e8aa3e4
