@@ -6,6 +6,10 @@ sealed-secrets:
   # reads only this value; "0" must stay a quoted string.
   keyrenewperiod: "0"
 
+  # Pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+  image:
+    tag: 0.41.2@sha256:e63ec6ec2b12a471bf781081bd370a93ca7b7b3999e5b9243341379aeb801d0b
+
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

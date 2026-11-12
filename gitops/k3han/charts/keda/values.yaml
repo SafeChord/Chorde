@@ -11,3 +11,12 @@ keda:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists
       effect: NoSchedule
+
+  # Pinned as tag@digest (Docs safechord.chorde.md section 4, item 1); moves with the chart version.
+  image:
+    keda:
+      tag: 2.21.0@sha256:81fe6547ce8d1cc29273f887b76507e9b853e5bc1f875ec23fe60061a38ed809
+    metricsApiServer:
+      tag: 2.21.0@sha256:255375037fe592732eeb554743aae360c2da88cf0b9b1258d0a987ef885f0881
+    webhooks:
+      tag: 2.21.0@sha256:e1969628cca6123e32eea13c47c75817091af2657fa68d9d0d58a8620d1b75b1
