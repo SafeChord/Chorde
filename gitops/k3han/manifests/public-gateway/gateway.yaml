@@ -43,6 +43,19 @@ spec:
       type: ClusterIP
     deployment:
       replicas: 1
+      # Recreate, not RollingUpdate: one replica holding hostPorts 80/443 on the
+      # only proxy-only node, so a surge pod sits Pending on the ports the old
+      # pod holds and the rollout never finishes (Chorde#47 -> #60). Recreate
+      # stops the old pod first; public routes are down until the new one is
+      # Ready (Docs safechord.chorde.k3han.ingress.md §2.1). NginxProxy has no
+      # strategy field; NGF applies these patches after rendering the
+      # Deployment on every reconcile, so the strategy is not defaulted back.
+      patches:
+        - type: StrategicMerge
+          value:
+            spec:
+              strategy:
+                type: Recreate
       container:
         hostPorts:
           - port: 80
