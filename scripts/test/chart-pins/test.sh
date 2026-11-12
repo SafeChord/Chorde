@@ -549,7 +549,7 @@ $JOB")" "NginxProxy/fixture spec.kubernetes.deployment.container.image renders r
 expect_rendered "a hook Job's image, unpinned" fail "$(fixture_env "$APP
 $HELPER
 $PROXY")" "Job/fixture-hook spec.template.spec.containers.0.image renders reg.example/job:3.0.0 without a digest"
-grep -qF "STRIMZI_KAFKA_IMAGES" <<<"$LAST_OUT" \
+grep -qF "reg.example/operand" <<<"$LAST_OUT" \
   && fail "  ... and the operand version map is left to its operator" "$LAST_OUT" \
   || ok "  ... and the operand version map is left to its operator"
 
