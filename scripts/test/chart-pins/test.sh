@@ -411,7 +411,8 @@ echo "== rendered images (Chorde#53)"
 # Argo CD read one), shaped after the charts K3han runs: a container image built
 # from repository and tag, an image a controller is handed through env
 # (cnpg's OPERATOR_IMAGE_NAME, strimzi's STRIMZI_DEFAULT_*_IMAGE) or a flag
-# (kube-prometheus-stack's --prometheus-config-reloader=), a resource holding
+# (kube-prometheus-stack's --prometheus-config-reloader=), an env var not named
+# for one (strimzi's STRIMZI_DEFAULT_MAVEN_BUILDER), a resource holding
 # repository and tag apart (NGF's NginxProxy), a hook Job, and an operand
 # version map an operator reads (strimzi's STRIMZI_KAFKA_IMAGES), which is left
 # to the operator by tag. Its helper's default tag is set in values.yaml and is
@@ -440,6 +441,10 @@ job:
   image:
     repository: reg.example/job
     tag: 3.0.0
+builder:
+  image:
+    repository: reg.example/builder
+    tag: 5.0.0
 operandImages: |
   4.0.0=reg.example/operand:1.0.0-4.0.0
 EOF
@@ -467,6 +472,8 @@ spec:
           env:
             - name: OPERATOR_IMAGE_NAME
               value: {{ include "fixture.app" . }}
+            - name: BUILDER
+              value: {{ .Values.builder.image.repository }}:{{ .Values.builder.image.tag }}
             - name: STRIMZI_KAFKA_IMAGES
               value: |
 {{ .Values.operandImages | indent 16 }}
@@ -524,7 +531,10 @@ PROXY="  proxy:
       tag: 1.0.0@$DIGEST"
 JOB="  job:
     image:
-      tag: 3.0.0@$DIGEST"
+      tag: 3.0.0@$DIGEST
+  builder:
+    image:
+      tag: 5.0.0@$DIGEST"
 
 expect_rendered "every image the chart renders pinned at its default tag" pass "$(fixture_env "$APP
 $HELPER
@@ -543,6 +553,12 @@ grep -qF "containers.0.env.0.value renders reg.example/app:1.0.0 without a diges
 expect_rendered "an image a flag hands on, unpinned" fail "$(fixture_env "$APP
 $PROXY
 $JOB")" "containers.0.args.0 renders reg.example/helper:2.0.0 without a digest"
+expect_rendered "an image handed on through an env var not named for one, unpinned" fail "$(fixture_env "$APP
+$HELPER
+$PROXY
+  job:
+    image:
+      tag: 3.0.0@$DIGEST")" "containers.0.env.1.value renders reg.example/builder:5.0.0 without a digest"
 expect_rendered "an image held as repository and tag apart, unpinned" fail "$(fixture_env "$APP
 $HELPER
 $JOB")" "NginxProxy/fixture spec.kubernetes.deployment.container.image renders reg.example/proxy:1.0.0 without a digest"
