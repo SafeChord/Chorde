@@ -463,7 +463,7 @@ spec:
         - name: app
           image: {{ include "fixture.app" . }}
           args:
-            - --helper-image={{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}
+            - --config-reloader={{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}
           env:
             - name: OPERATOR_IMAGE_NAME
               value: {{ include "fixture.app" . }}
