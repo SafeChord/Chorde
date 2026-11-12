@@ -404,6 +404,181 @@ deploy repo/app:1.0 busybox:1.36 > "$d/charts/svc/upstream-values.yaml"
 FAKE_HELM_OUT=$(cat "$d/charts/svc/upstream-values.yaml") \
   fake expect "a chart's default upstream-values.yaml is not checked for pins" pass "$d"
 
+echo "== rendered images (Chorde#53)"
+# Every image a wrapper renders carries a digest, and a pin's tag is the one its
+# chart's version renders by default. check.py --rendered renders each wrapper with
+# helm template. The fixture is a local chart (a file:// dependency, as Helm and
+# Argo CD read one), shaped after the charts K3han runs: a container image built
+# from repository and tag, an image a controller is handed through env
+# (cnpg's OPERATOR_IMAGE_NAME, strimzi's STRIMZI_DEFAULT_*_IMAGE) or a flag
+# (kube-prometheus-stack's --prometheus-config-reloader=), a resource holding
+# repository and tag apart (NGF's NginxProxy), a hook Job, and an operand
+# version map an operator reads (strimzi's STRIMZI_KAFKA_IMAGES), which is left
+# to the operator by tag. Its helper's default tag is set in values.yaml and is
+# not the chart's appVersion.
+FIX="$TMP/fixture-chart"; mkdir -p "$FIX/templates"
+cat > "$FIX/Chart.yaml" <<'EOF'
+apiVersion: v2
+name: fixture
+version: 1.0.0
+appVersion: 1.0.0
+EOF
+cat > "$FIX/values.yaml" <<'EOF'
+image:
+  repository: reg.example/app
+  tag: ""
+  digest: ""
+helper:
+  image:
+    repository: reg.example/helper
+    tag: 2.0.0
+proxy:
+  image:
+    repository: reg.example/proxy
+    tag: ""
+job:
+  image:
+    repository: reg.example/job
+    tag: 3.0.0
+operandImages: |
+  4.0.0=reg.example/operand:1.0.0-4.0.0
+EOF
+cat > "$FIX/templates/_image.tpl" <<'EOF'
+{{- define "fixture.image" -}}
+{{ .repository }}:{{ .tag | default $.appVersion }}{{ with .digest }}@{{ . }}{{ end }}
+{{- end -}}
+{{- define "fixture.app" -}}
+{{ include "fixture.image" (merge (dict "appVersion" .Chart.AppVersion) .Values.image) }}
+{{- end -}}
+EOF
+cat > "$FIX/templates/deployment.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fixture
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          image: {{ include "fixture.app" . }}
+          args:
+            - --helper-image={{ .Values.helper.image.repository }}:{{ .Values.helper.image.tag }}
+          env:
+            - name: OPERATOR_IMAGE_NAME
+              value: {{ include "fixture.app" . }}
+            - name: STRIMZI_KAFKA_IMAGES
+              value: |
+{{ .Values.operandImages | indent 16 }}
+---
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: fixture
+spec:
+  kubernetes:
+    deployment:
+      container:
+        image:
+          repository: {{ .Values.proxy.image.repository }}
+          tag: {{ .Values.proxy.image.tag | default .Chart.AppVersion }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fixture-hook
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+spec:
+  template:
+    spec:
+      containers:
+        - name: job
+          image: {{ .Values.job.image.repository }}:{{ .Values.job.image.tag }}
+EOF
+DEFAULTS_FIX="$FIX/values.yaml"
+
+# fixture_env <overlay under `fixture:`>: an env deploying the fixture chart through
+# a wrapper whose dependency is the local chart.
+fixture_env() {
+  local dir; dir=$(new_env svc)
+  wrap "$dir" svc fixture 1.0.0 "file://$FIX" "$DEFAULTS_FIX" "$(printf 'fixture:\n%s\n' "$1")"
+  echo "$dir"
+}
+# expect_rendered <name> pass|fail <env-dir> [pattern]: as expect, for --rendered.
+expect_rendered() {
+  local out rc; out=$(python3 "$CHECK" --rendered "$3" 2>&1); rc=$?; LAST_OUT=$out
+  if [ "$2" = pass ] && [ $rc -eq 0 ]; then ok "$1"
+  elif [ "$2" = fail ] && [ $rc -eq 1 ] && { [ -z "${4:-}" ] || grep -qF -- "$4" <<<"$out"; }; then ok "$1"
+  else fail "$1 (want $2, rc $rc)" "$out"
+  fi
+}
+
+APP="  image:
+    tag: 1.0.0@$DIGEST"
+HELPER="  helper:
+    image:
+      tag: 2.0.0@$DIGEST"
+PROXY="  proxy:
+    image:
+      tag: 1.0.0@$DIGEST"
+JOB="  job:
+    image:
+      tag: 3.0.0@$DIGEST"
+
+expect_rendered "every image the chart renders pinned at its default tag" pass "$(fixture_env "$APP
+$HELPER
+$PROXY
+$JOB")"
+expect_rendered "an image pinned through a digest key, its tag left to the chart" pass "$(fixture_env "  image:
+    digest: $DIGEST
+$HELPER
+$PROXY
+$JOB")"
+expect_rendered "the container image and the env that hands it on, unpinned" fail "$(fixture_env "$HELPER
+$PROXY
+$JOB")" "Deployment/fixture spec.template.spec.containers.0.image renders reg.example/app:1.0.0 without a digest"
+grep -qF "containers.0.env.0.value renders reg.example/app:1.0.0 without a digest" <<<"$LAST_OUT" \
+  && ok "  ... and the env value" || fail "  ... and the env value" "$LAST_OUT"
+expect_rendered "an image a flag hands on, unpinned" fail "$(fixture_env "$APP
+$PROXY
+$JOB")" "containers.0.args.0 renders reg.example/helper:2.0.0 without a digest"
+expect_rendered "an image held as repository and tag apart, unpinned" fail "$(fixture_env "$APP
+$HELPER
+$JOB")" "NginxProxy/fixture spec.kubernetes.deployment.container.image renders reg.example/proxy:1.0.0 without a digest"
+expect_rendered "a hook Job's image, unpinned" fail "$(fixture_env "$APP
+$HELPER
+$PROXY")" "Job/fixture-hook spec.template.spec.containers.0.image renders reg.example/job:3.0.0 without a digest"
+grep -qF "STRIMZI_KAFKA_IMAGES" <<<"$LAST_OUT" \
+  && fail "  ... and the operand version map is left to its operator" "$LAST_OUT" \
+  || ok "  ... and the operand version map is left to its operator"
+
+expect_rendered "a pin whose tag is not the chart's default" fail "$(fixture_env "  image:
+    tag: 1.0.1@$DIGEST
+$HELPER
+$PROXY
+$JOB")" "renders reg.example/app:1.0.1@$DIGEST from its pin; fixture 1.0.0 renders reg.example/app:1.0.0 there by default"
+expect_rendered "a pin whose tag is the appVersion where the chart's default is another tag" fail "$(fixture_env "$APP
+  helper:
+    image:
+      tag: 1.0.0@$DIGEST
+$PROXY
+$JOB")" "renders reg.example/helper:1.0.0@$DIGEST from its pin; fixture 1.0.0 renders reg.example/helper:2.0.0 there by default"
+expect_rendered "a pin held as repository and tag apart, at another tag" fail "$(fixture_env "$APP
+$HELPER
+  proxy:
+    image:
+      tag: 0.9.0@$DIGEST
+$JOB")" "NginxProxy/fixture spec.kubernetes.deployment.container.image renders reg.example/proxy:0.9.0@$DIGEST from its pin"
+
+d=$(fixture_env "$APP
+$HELPER
+$PROXY
+$JOB"); sed -i "s#file://$FIX#file://$TMP/no-such-chart#" "$d/charts/svc/Chart.yaml"
+expect_rendered "a wrapper that cannot be rendered" fail "$d" "charts/svc: cannot render the wrapper"
+
+expect_rendered "gitops/k3han: every rendered image pinned at its chart's default tag" pass "$REPO/gitops/k3han"
+
 if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
   echo "== K3han runs the pinned digests (Chorde#69)"
   # Each self-pinned image, a tag-only pin in a wrapper as its chart renders it,
@@ -440,7 +615,15 @@ if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
       fi
     done <<<"$pins"
   }
-  compare_cluster "$REPO/gitops/k3han"
+  K3HAN_PINS=$(compare_cluster "$REPO/gitops/k3han"); echo "$K3HAN_PINS"
+  PASS=$((PASS + $(grep -c '^  ok ' <<<"$K3HAN_PINS"))); FAIL=$((FAIL + $(grep -c '^  FAIL ' <<<"$K3HAN_PINS")))
+  # A pin set through a chart's digest key alone, and one its chart renders as
+  # repository and tag apart, are compared too (Chorde#53).
+  for where in "charts/prometheus/values.yaml kube-prometheus-stack.prometheus.prometheusSpec.image" \
+               "charts/nginx-gateway-fabric/values.yaml nginx-gateway-fabric.nginx.image"; do
+    grep -qF "  ok   $where runs " <<<"$K3HAN_PINS" && ok "  ... $where is compared" \
+      || fail "  ... $where is compared" "$(grep -F "$where" <<<"$K3HAN_PINS")"
+  done
 
   echo "== the comparison catches what it guards (Chorde#69)"
   # cluster_case <name> <sed expression> <file under gitops/k3han> <pattern>: a copy of
@@ -458,6 +641,12 @@ if [ "${CHART_PINS_CLUSTER:-}" = 1 ]; then
   cluster_case "a pin compared in a namespace that runs another digest of its repository" \
     "0,/namespace: redis/s//namespace: safezone/" manifests/valkey/statefulset.yaml \
     "FAIL manifests/valkey/statefulset.yaml spec.template.spec.containers.0.image pins"
+  cluster_case "a pin through a digest key whose digest K3han does not run" \
+    "/^    prometheusSpec:/,/^    [a-z]/s/\(sha: \)[0-9a-f]\{64\}/\1${OTHER#sha256:}/" charts/prometheus/values.yaml \
+    "FAIL charts/prometheus/values.yaml kube-prometheus-stack.prometheus.prometheusSpec.image pins $OTHER"
+  cluster_case "a pin held as repository and tag apart whose digest K3han does not run" \
+    "/^  nginx:/,\$s/\(tag: 2\.8\.1@\)sha256:[0-9a-f]*/\1$OTHER/" charts/nginx-gateway-fabric/values.yaml \
+    "FAIL charts/nginx-gateway-fabric/values.yaml nginx-gateway-fabric.nginx.image pins $OTHER"
 fi
 
 echo
