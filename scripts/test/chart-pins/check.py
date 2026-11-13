@@ -76,9 +76,6 @@ import time
 
 import yaml
 
-# The argocd Application is applied by hand at bootstrap; no stage lists it.
-DEPLOYED_OUTSIDE_STAGES = {"argocd"}
-
 DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
 RETRY_WINDOW = float(os.environ.get("CHART_PINS_RETRY_WINDOW", 90))
 RETRY_FIRST_WAIT = float(os.environ.get("CHART_PINS_RETRY_FIRST_WAIT", 5))
@@ -114,8 +111,8 @@ def load_all(path):
 
 
 def deployed_services(env_dir):
-    """Map each deployed service to the stage file that lists it (None outside stages)."""
-    services = {s: None for s in DEPLOYED_OUTSIDE_STAGES}
+    """Map each deployed service to the stage file that lists it."""
+    services = {}
     stages = os.path.join(env_dir, "stages")
     for name in sorted(os.listdir(stages)):
         if not name.endswith(".yaml"):
@@ -150,7 +147,7 @@ def check_applications(env_dir, services):
         if not os.path.isdir(top):
             continue
         for name in sorted(os.listdir(top)):
-            if stage and VALUES_FILE.match(name):
+            if VALUES_FILE.match(name):
                 find(f"manifests/{service}/{name}",
                      f"chart values in a directory {stage} renders; they belong in charts/{service}/")
         app = os.path.join(top, "application.yaml")
