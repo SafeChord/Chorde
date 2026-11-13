@@ -1,8 +1,9 @@
 #!/bin/sh
 # vuln-scan: scan the images running in K3han with trivy and upload the findings
 # to GitHub Code Scanning on SafeChord/Chorde (Chorde#40; Docs:
-# safechord.chorde.k3han.operations.md §3.1). GitHub calls retry 5xx, 429 and
-# failed connections with growing waits for up to an hour.
+# safechord.chorde.k3han.operations.md §3.1). GitHub calls retry 5xx, 429,
+# failed connections and requests left unanswered past GITHUB_TIMEOUT, with
+# growing waits for up to an hour (§4).
 #
 # Any failure of the run as a whole (listing pods, fetching the vulnerability
 # database, minting the token, the upload, its processing) exits non-zero: the
@@ -26,6 +27,12 @@ EXCLUDE_NAMESPACES=${EXCLUDE_NAMESPACES:-safezone}
 SEVERITY=${SEVERITY:-HIGH,CRITICAL}
 POLL_INTERVAL=${POLL_INTERVAL:-10}
 POLL_TRIES=${POLL_TRIES:-60}
+# Seconds a GitHub request may take, end to end, before it counts as
+# unanswered (Chorde#58). GitHub ends any request it takes more than ten
+# seconds to process; its four endpoints answered within a second, a 313 KB
+# upload included, measured on 2026-11-13. The bound adds at most a minute at
+# each end of the hour of retries, well inside activeDeadlineSeconds (7200).
+GITHUB_TIMEOUT=${GITHUB_TIMEOUT:-60}
 
 log() { echo "vuln-scan: $*" >&2; }
 die() { log "FAILED: $*"; exit 1; }
@@ -114,7 +121,7 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
 
     : > "$WORK_DIR/github-curl.err"
     if [ "$auth" = app ]; then
-      if status=$(curl -sS -X POST -H "Authorization: Bearer $jwt" \
+      if status=$(curl -sS --max-time "$GITHUB_TIMEOUT" -X POST -H "Authorization: Bearer $jwt" \
           -H "Accept: application/vnd.github+json" "$@" \
           -o "$response" -w '%{http_code}' 2> "$WORK_DIR/github-curl.err"); then
         curl_rc=0
@@ -122,7 +129,7 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
         curl_rc=$?
       fi
     else
-      if status=$(curl -sS -H "Authorization: Bearer $TOKEN" \
+      if status=$(curl -sS --max-time "$GITHUB_TIMEOUT" -H "Authorization: Bearer $TOKEN" \
           -H "Accept: application/vnd.github+json" \
           -H "X-GitHub-Api-Version: 2022-11-28" "$@" \
           -o "$response" -w '%{http_code}' 2> "$WORK_DIR/github-curl.err"); then
@@ -132,6 +139,7 @@ github_request() { # github_request <call> <failure> <response> <auth> <curl arg
       fi
     fi
     curl_error=$(cat "$WORK_DIR/github-curl.err")
+    [ "$curl_rc" -ne 28 ] || curl_error="unanswered after ${GITHUB_TIMEOUT}s: $curl_error"
 
     if [ "$curl_rc" -eq 0 ]; then
       case $status in

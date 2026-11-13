@@ -1,4 +1,4 @@
-"""Stand-in for the Kubernetes and GitHub APIs that scan.sh calls (Chorde#56).
+"""Stand-in for the Kubernetes and GitHub APIs that scan.sh calls (Chorde#56, #58).
 
 scan.sh talks to it through the real curl, so it meets real HTTP answers and
 real connection failures. Time is the fake clock in $STUB_DIR/clock, which the
@@ -35,9 +35,20 @@ Behaviour, from the environment:
                            have passed since this call's first request
                          {"upload": {"with": 502}}
                            every request fails, for good
-                       A fault is an HTTP status, or "drop": the connection
+                       A fault is an HTTP status; "drop": the connection
                        is closed with no answer (curl: "Empty reply from
-                       server").
+                       server"); or "hang": the request is read and never
+                       answered, the connection held open until the client
+                       gives up on it (Chorde#58).
+  STUB_SLOW            JSON, per call, how slowly a served request is taken
+                       in, in real time (Chorde#58):
+                         {"upload": {"read_bps": 32768, "answer_after": 10}}
+                           the body is read at read_bps bytes a second, and
+                           the answer sent answer_after seconds later
+
+The fake clock is advanced by the real time a request is held (a hang, or a
+slow request), so time a request spends unanswered counts as it does on the
+real clock.
 
 Recorded in $STUB_DIR:
 
@@ -57,12 +68,14 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 STUB_DIR = os.environ["STUB_DIR"]
 FIX = os.environ.get("FIX", "")
 APP_KEY = os.environ.get("STUB_APP_KEY", "")
 FAULTS = json.loads(os.environ.get("STUB_FAULTS") or "{}")
+SLOW = json.loads(os.environ.get("STUB_SLOW") or "{}")
 
 LOCK = threading.Lock()
 SEEN = {}  # call -> {"first": fake time of first request, "n": requests}
@@ -85,6 +98,16 @@ GITHUB_ERRORS = {
 def now():
     with open(os.path.join(STUB_DIR, "clock")) as f:
         return float(f.read().strip())
+
+
+def advance(seconds):
+    """Move the fake clock forward by the real seconds a request was held."""
+    clock = os.path.join(STUB_DIR, "clock")
+    with LOCK:
+        t = now() + seconds
+        with open(clock + ".stub", "w") as f:
+            f.write("%.3f\n" % t)
+        os.rename(clock + ".stub", clock)
 
 
 def iso(t):
@@ -180,6 +203,39 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
+    def hang(self, call, t):
+        """Read the request, never answer; hold the connection until the client closes it."""
+        self.record(call, t, "hang")
+        self.close_connection = True
+        started = time.monotonic()
+        self.connection.settimeout(0.05)
+        while True:
+            try:
+                if not self.connection.recv(1, socket.MSG_PEEK):
+                    break
+                time.sleep(0.05)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+        advance(time.monotonic() - started)
+
+    def read_body(self, call):
+        length = int(self.headers.get("Content-Length") or 0)
+        rate = (SLOW.get(call) or {}).get("read_bps")
+        if not length:
+            return b""
+        if not rate:
+            return self.rfile.read(length)
+        body = b""
+        while len(body) < length:
+            chunk = self.rfile.read(min(int(rate) // 10 or 1, length - len(body)))
+            if not chunk:
+                break
+            body += chunk
+            time.sleep(0.1)
+        return body
+
     def fault(self, call, t):
         """The fault this request meets, or None."""
         with LOCK:
@@ -196,10 +252,10 @@ class Handler(BaseHTTPRequestHandler):
         return spec["with"]
 
     def serve(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        body = self.rfile.read(length) if length else b""
         t = now()
         call = self.classify()
+        started = time.monotonic()
+        body = self.read_body(call)
         if call == "unexpected":
             return self.answer(call, t, 404, {"message": "Not Found"})
         if call == "upload":
@@ -209,9 +265,17 @@ class Handler(BaseHTTPRequestHandler):
         fault = self.fault(call, t)
         if fault == "drop":
             return self.drop(call, t)
+        if fault == "hang":
+            return self.hang(call, t)
         if fault is not None:
             headers = {"Retry-After": "60"} if fault == 429 else None
             return self.answer(call, t, int(fault), GITHUB_ERRORS.get(int(fault), {"message": "error"}), headers)
+
+        delay = (SLOW.get(call) or {}).get("answer_after")
+        if delay:
+            time.sleep(float(delay))
+        if call in SLOW:
+            advance(time.monotonic() - started)
 
         if call == "pods":
             if os.environ.get("STUB_PODS_HTTP"):
