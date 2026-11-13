@@ -76,13 +76,14 @@ ansible-playbook -i inventory.ini privision.yaml
 
 ### Bootstrap the GitOps Controller
 To initialize the entire platform from a fresh K3s install:
-1. Install Argo CD by hand from its wrapper chart, `gitops/k3han/charts/argocd/`, as the Helm release `argocd` in the namespace `argocd`.
-2. Run the bootstrap script: it waits for `argocd-server`, then applies the root application:
+1. Apply Argo CD rendered from its wrapper chart, `gitops/k3han/charts/argocd/`, into the namespace `argocd` (`helm template` piped to `kubectl apply`), never as a Helm release.
+2. Apply the AppProjects, `gitops/k3han/manifests/argocd/appprojects.yaml`.
+3. Run the bootstrap script: it waits for `argocd-server`, then applies the root application:
    ```bash
    scripts/ops/bootstrap-cluster.sh k3han
    ```
 
-From then on Argo CD manages itself: the bootstrap stage deploys its Application and repository credentials (`gitops/k3han/manifests/argocd/`). The steps a fresh cluster still needs by hand are in the platform map, `Docs/docs/safechord.chorde.md` §2.
+From then on Argo CD manages itself: the bootstrap stage deploys its Application, its AppProjects and its repository credentials (`gitops/k3han/manifests/argocd/`). The exact commands, and the steps a fresh cluster still needs by hand, are in the platform map, `Docs/docs/safechord.chorde.md` §2.
 
 ### Secret Management
 Secrets are managed using **Bitnami Sealed Secrets**.
