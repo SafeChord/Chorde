@@ -16,11 +16,13 @@ spec:
     targetRevision: main
     path: gitops/k3han/charts/nginx-gateway-fabric
     helm:
-      # MUST match the release name of the original `helm install` (`ngf`).
-      # ArgoCD's Helm release name defaults to the Application name; leaving it
-      # as `nginx-gateway-fabric` renders a SECOND, parallel NGF install whose
-      # control plane fights the original over GatewayClass `nginx` and breaks
-      # the data-plane Service endpoints. Pinning to `ngf` adopts in place.
+      # MUST stay `ngf`: every resource name the chart renders derives from it.
+      # It was pinned to adopt the original `helm install ngf` in place; that
+      # Helm release was retired on K3han (Chorde#98), and nothing is a Helm
+      # release here now. ArgoCD's release name defaults to the Application
+      # name; changing it to `nginx-gateway-fabric` renders a SECOND, parallel
+      # NGF install whose control plane fights this one over GatewayClass
+      # `nginx` and breaks the data-plane Service endpoints.
       releaseName: ngf
 
   destination:
