@@ -4,7 +4,8 @@
 # Runs gitops/k3han/kustomize/vuln-scan/scan.sh against a stubbed trivy, fed
 # with real trivy output trimmed into fixtures/, and against api_stub.py, which
 # stands in for the Kubernetes and GitHub APIs behind the real curl on a fake
-# clock (Chorde#56: retries over an hour take no real time); checks the rendered
+# clock (Chorde#56: retries over an hour take no real time; Chorde#58: a request
+# left unanswered costs real time, a second or so a request); checks the rendered
 # manifests with `kubectl kustomize`, and checks the Application in the platform
 # stage's vuln-scan/ directory that deploys them (Chorde#54).
 #
@@ -134,7 +135,9 @@ run_scan() {
     export KUBE_API="$api"
     export GITHUB_API="$api"
     export POLL_INTERVAL=0
-    sh "$MANIFESTS/scan.sh"
+    # A run that waits on an unanswered request for good would hold the suite:
+    # it is ended after RUN_LIMIT real seconds, and fails its case.
+    timeout -k 5 "${RUN_LIMIT:-300}" sh "$MANIFESTS/scan.sh"
     rc=$?
     kill "$stub" 2>/dev/null; wait "$stub" 2>/dev/null
     exit "$rc"
@@ -448,6 +451,97 @@ check "head down 40 min, then the status poll down 25 min -> the run completes" 
 [ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
 check "  ... and no call met an expired token (no 401)" bash -c '! grep -q " 401$" "$1"' _ "$STUB_DIR/requests.log"
 
+
+# ---------------------------------------------------------------------------
+echo "unanswered: a GitHub request that is never answered is retried (Chorde#58)"
+# ---------------------------------------------------------------------------
+# Docs: safechord.chorde.k3han.operations.md §4, third bullet. A request counts
+# as unanswered once it has waited well past any time GitHub takes to answer,
+# and is then retried like a failed connection, within the same hour and with
+# the same waits. api_stub.py's "hang" reads the request and never answers;
+# the time it is held is real, and is added to the fake clock.
+#
+# The bound is shortened to GITHUB_TIMEOUT=1 (s) so a held request costs a
+# second; the last case below runs with the bound scan.sh ships.
+
+for call in $CALLS; do
+  new_case
+  GITHUB_TIMEOUT=1 RUN_LIMIT=120 STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"seq\": [\"hang\", \"hang\", \"hang\"]}}" run_scan
+  check "$call: unanswered three times, then served -> the run completes" completed
+  [ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+  check "  ... asking again after each, until served" \
+    bash -c 'test "$(requests "$1" | head -n 4 | awk "{print \$6}" | tr "\n" " ")" = "hang hang hang $2 "' _ "$call" \
+    "$(case $call in token) echo 201 ;; upload) echo 202 ;; *) echo 200 ;; esac)"
+done
+
+# Never answered: the run gives up once its hour of retries is spent, well
+# inside the Job's activeDeadlineSeconds (7200), and says which call went
+# unanswered. token is signed with the App's JWT, the others carry the
+# installation token: the two are asked by different requests.
+for call in token upload; do
+  new_case
+  GITHUB_TIMEOUT=1 RUN_LIMIT=180 STUB_MAP=$STD_MAP STUB_FAULTS="{\"$call\": {\"with\": \"hang\"}}" run_scan
+  line=$(last_line)
+  check "$call: never answered -> non-zero (rc $RC)" bash -c 'test "$1" != 0 && test "$1" != 124 && test "$1" != 137' _ "$RC"
+  check "  ... within an hour and ten minutes of the first request (took $(elapsed "$call") s)" \
+    test "$(elapsed "$call")" -le 4200
+  check "  ... having kept asking for more than half an hour (asked $(requests "$call" | wc -l) times over $(span "$call") s)" \
+    test "$(span "$call")" -ge 1800
+  check "  ... with waits that grow (first $(gaps "$call" | head -n 1) s, longest $(gaps "$call" | sort -n | tail -n 1) s)" \
+    waits_grow "$call"
+  check "  ... giving up on its last request, not after a wait ($(after_last "$call") s after it)" \
+    test "$(after_last "$call")" -le 2
+  check "  ... the last log line names the call and says it went unanswered" \
+    bash -c 'names_call "$1" "$2" && grep -qiE "unanswered|no answer|timed out" <<<"$2"' _ "$call" "$line"
+  check "  ... nothing processed" bash -c '! requests status | grep -q " 200$"'
+done
+
+# With the bound scan.sh ships: an upload the size of the largest the scan has
+# sent (312972 bytes, gzip and base64, 2026-11-08), taken in over a slow link
+# (32 KB/s, about ten seconds) and answered ten seconds later (GitHub ends any
+# request it takes longer than that to process), is served the first time.
+# A head request left unanswered is given up within two minutes, so the bound
+# adds little to the hour of retries; this costs that much real time.
+new_case
+mkdir -p "$CASE/fix" && cp "$FIX"/* "$CASE/fix/"
+python3 -I - "$CASE/fix" <<'PY'
+# big.sarif: a trivy SARIF with 2200 findings, distinct CVEs on packages with
+# random names, so that it compresses about as poorly as a real report.
+import json, os, sys
+d = sys.argv[1]
+doc = json.load(open(os.path.join(d, "dex.sarif")))
+run = doc["runs"][0]
+rule0, res0 = run["tool"]["driver"]["rules"][0], run["results"][0]
+rules, results = [], []
+for i in range(2200):
+    cve = "CVE-2026-%05d" % (10000 + i)
+    pkg = "pkg-" + os.urandom(6).hex()
+    ver = "%d.%d.%d-%s" % (i % 7, i % 13, i % 29, os.urandom(3).hex())
+    r = json.loads(json.dumps(rule0))
+    r["id"] = r["name"] = cve
+    r["shortDescription"]["text"] = "%s: %s %s" % (cve, pkg, os.urandom(16).hex())
+    rules.append(r)
+    x = json.loads(json.dumps(res0))
+    x["ruleId"] = cve
+    x["message"]["text"] = ("Package: %s\nInstalled Version: %s\nVulnerability %s\nSeverity: HIGH\n"
+                            "Fixed Version: %s\nLink: [%s](https://avd.aquasec.com/nvd/%s)"
+                            % (pkg, ver, cve, ver + "1", cve, cve.lower()))
+    results.append(x)
+run["tool"]["driver"]["rules"], run["results"] = rules, results
+json.dump(doc, open(os.path.join(d, "big.sarif"), "w"))
+PY
+cp "$CASE/fix/dex.json" "$CASE/fix/big.json"
+FIX="$CASE/fix" RUN_LIMIT=300 STUB_MAP="dexidp/dex=big $STD_MAP" STUB_FAULTS='{"head": {"seq": ["hang"]}}' \
+  STUB_SLOW='{"upload": {"read_bps": 32768, "answer_after": 10}}' run_scan
+sent=$(sed -n 's/.*uploading \([0-9]*\) bytes.*/\1/p' "$CASE/out.log")
+check "upload of ${sent:-?} bytes (at least 300000), taken in over ten seconds and answered ten seconds later -> the run completes" \
+  bash -c 'test "${1:-0}" -ge 300000 && test "$2" = 0' _ "$sent" "$RC"
+[ "$RC" = 0 ] || sed 's/^/       | /' "$CASE/out.log" | tail -5
+check "  ... the first time it is sent" test "$(requests upload | wc -l)" = 1
+check "  ... with the whole payload received" \
+  bash -c 'test "$(jq -j .sarif "$1/upload.json" | wc -c)" = "$2"' _ "$STUB_DIR" "$sent"
+check "head: unanswered once -> asked again within two minutes ($(gaps head | head -n 1) s, the wait included)" \
+  bash -c 'test "$(requests head | awk "{print \$6}" | tr "\n" " ")" = "hang 200 " && test "$(gaps head | head -n 1)" -le 125'
 
 # ---------------------------------------------------------------------------
 echo "manifests: kubectl kustomize $MANIFESTS"
