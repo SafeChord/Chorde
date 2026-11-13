@@ -15,6 +15,12 @@ spec:
             wave: "1"
           - service: keda
             wave: "1"
+          # Argo CD deploys itself (Chorde#68): its Application and the
+          # SealedSecrets of its repository credentials. Never remove it: the
+          # stage prunes, so removing it deletes the repository Secrets.
+          # Wave 2: its SealedSecrets need the sealed-secrets CRD.
+          - service: argocd
+            wave: "2"
           # ingress-public + ingress-private both decommissioned (Chorde #4):
           # replaced by the NGF private+public paths below. argocd/grafana via the
           # private Gateway; echo via the public Gateway. nginx-ingress is gone.
