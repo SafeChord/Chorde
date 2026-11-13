@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Requirement tests for Argo CD deploying itself from the bootstrap stage
-# (Chorde#68).
+# (Chorde#68), its AppProjects with it (Chorde#94).
 #
 # Runs check.py against gitops/k3han, then against small trees built in a temp
 # directory, each breaking or keeping the rule one way, so the check is shown
@@ -71,13 +71,33 @@ application() {
   echo "    path: gitops/k3han/charts/argocd"
 }
 
+# appproject <name> [sync-options]: an AppProject, by default with the sync
+# options Prune=false and Delete=false; "-" leaves the annotation out.
+appproject() {
+  local opts=${2-Prune=false,Delete=false}
+  echo "apiVersion: argoproj.io/v1alpha1"
+  echo "kind: AppProject"
+  echo "metadata:"
+  echo "  name: $1"
+  echo "  namespace: argocd"
+  [ "$opts" != - ] && printf '  annotations:\n    argocd.argoproj.io/sync-options: "%s"\n' "$opts"
+  echo "spec:"
+  echo "  sourceRepos:"
+  echo "    - '*'"
+}
+
+# appprojects: chorde and safezone, as one file.
+appprojects() { appproject chorde; echo "---"; appproject safezone; }
+
 # new_env <bootstrap services...>: an env dir whose bootstrap stage lists the
-# services, with the argocd Application in manifests/argocd/.
+# services, with the argocd Application and the AppProjects in
+# manifests/argocd/.
 new_env() {
   local dir; dir=$(mktemp -d "$TMP/env.XXXX")
   mkdir -p "$dir/stages" "$dir/manifests/argocd"
   stage "$dir/stages/00-bootstrap.yaml" "$@"
   application > "$dir/manifests/argocd/application.yaml"
+  appprojects > "$dir/manifests/argocd/appprojects.yaml"
   echo "$dir"
 }
 
@@ -141,6 +161,54 @@ expect "an Application by another name" fail "$d" "holds no Application named ar
 d=$(new_env argocd)
 application resources-finalizer.argocd.argoproj.io > "$d/manifests/argocd/unsealed-local.yaml"
 expect "an ignored unsealed file is not read" pass "$d"
+
+echo "== the AppProjects"
+d=$(new_env argocd)
+expect "chorde and safezone, both kept from prune and delete" pass "$d"
+
+d=$(new_env argocd); rm "$d/manifests/argocd/appprojects.yaml"
+expect "no AppProjects" fail "$d" "manifests/argocd: defines no AppProject named chorde"
+
+d=$(new_env argocd); appproject chorde > "$d/manifests/argocd/appprojects.yaml"
+expect "safezone, named only by SafeZone-Deploy, missing" fail "$d" "defines no AppProject named safezone"
+
+d=$(new_env argocd)
+sed -i 's/^    spec:$/    spec:\n      project: platform/' "$d/stages/00-bootstrap.yaml"
+expect "a project a stage's template names, undefined" fail "$d" "defines no AppProject named platform"
+
+d=$(new_env argocd)
+sed -i 's/^  project: chorde$/  project: default/' "$d/manifests/argocd/application.yaml"
+expect "the project default needs no definition" pass "$d"
+
+d=$(new_env argocd)
+{ appproject chorde Delete=false; echo "---"; appproject safezone; } > "$d/manifests/argocd/appprojects.yaml"
+expect "chorde without Prune=false" fail "$d" "the AppProject chorde lacks the sync option Prune=false"
+
+d=$(new_env argocd)
+{ appproject chorde; echo "---"; appproject safezone Prune=false; } > "$d/manifests/argocd/appprojects.yaml"
+expect "safezone without Delete=false" fail "$d" "the AppProject safezone lacks the sync option Delete=false"
+
+d=$(new_env argocd)
+{ appproject chorde -; echo "---"; appproject safezone; } > "$d/manifests/argocd/appprojects.yaml"
+expect "chorde without sync options" fail "$d" "the AppProject chorde lacks the sync option Prune=false"
+
+d=$(new_env argocd)
+{ appproject chorde "Prune=true,Delete=false"; echo "---"; appproject safezone; } > "$d/manifests/argocd/appprojects.yaml"
+expect "chorde with Prune=true" fail "$d" "lacks the sync option Prune=false"
+
+d=$(new_env argocd)
+{ appproject chorde "Delete=false, ServerSideApply=true , Prune=false"; echo "---"; appproject safezone; } > "$d/manifests/argocd/appprojects.yaml"
+expect "options in another order, with spaces and another option" pass "$d"
+
+d=$(new_env argocd); mv "$d/manifests/argocd/appprojects.yaml" "$d/manifests/argocd/unsealed-projects.yaml"
+expect "AppProjects only in an ignored unsealed file" fail "$d" "defines no AppProject named chorde"
+
+d=$(new_env argocd); mv "$d/manifests/argocd/appprojects.yaml" "$d/stages/appprojects.yaml"
+expect "AppProjects outside manifests/argocd" fail "$d" "defines no AppProject named chorde"
+
+d=$(new_env argocd)
+sed -i 's/^kind: AppProject$/kind: ConfigMap/' "$d/manifests/argocd/appprojects.yaml"
+expect "documents named chorde and safezone that are not AppProjects" fail "$d" "defines no AppProject named chorde"
 
 echo
 echo "passed $PASS, failed $FAIL"

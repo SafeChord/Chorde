@@ -1,0 +1,49 @@
+# The AppProjects every Application names (Chorde#94; Docs safechord.chorde.md
+# section 2). chorde: Chorde's own Applications. safezone: SafeZone-Deploy's.
+# Synced by bootstrap-argocd. Prune=false and Delete=false: the stage prunes and
+# bootstrap-argocd carries the resources finalizer, so without them removing
+# this file, or deleting bootstrap-argocd, would delete the projects and leave
+# every Application unable to sync. Removing a project takes a hand step.
+# On a fresh cluster this file is applied by hand, before root.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: chorde
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  clusterResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  description: platform manager
+  destinations:
+  - name: '*'
+    namespace: '*'
+    server: https://kubernetes.default.svc
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  sourceRepos:
+  - '*'
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: safezone
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: ''
+    kind: PersistentVolume
+  description: safezone-app manager
+  destinations:
+  - name: '*'
+    namespace: '*'
+    server: https://kubernetes.default.svc
+  sourceRepos:
+  - https://github.com/SafeChord/SafeZone-Deploy.git

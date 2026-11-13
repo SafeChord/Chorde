@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-# Bootstrap Macro
-
-# deploy root app to k3han
-kubectl apply -f gitops/k3han/root.yaml
-
-#!/usr/bin/env bash
-set -e
-
-# Bootstrap Macro
-CLUSTER_NAME=$1 
+# Bootstrap Macro: step 4 of a from-scratch bootstrap (Docs safechord.chorde.md
+# section 2). Applies the cluster's root.yaml once argocd-server is ready, and
+# nothing if a check fails. Run from the repository root.
+CLUSTER_NAME=$1
 
 if [[ -z "$CLUSTER_NAME" ]]; then
     echo "Usage: $0 <cluster-name>"

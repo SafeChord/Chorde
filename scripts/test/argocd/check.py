@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check that Argo CD deploys itself from the bootstrap stage (Chorde#68).
+"""Check that Argo CD deploys itself from the bootstrap stage (Chorde#68), its
+AppProjects with it (Chorde#94).
 
 Docs safechord.chorde.md section 2: the bootstrap stage lists argocd, so the
 generated bootstrap-argocd syncs manifests/argocd/, the argocd Application and
@@ -11,6 +12,13 @@ the SealedSecrets of Argo CD's repository credentials.
    Application and the repository Secrets.
 2. manifests/argocd/ holds the Application named argocd, and it carries no
    resources finalizer: deleted with one, it would delete Argo CD itself.
+3. manifests/argocd/ defines every AppProject an Application needs (Chorde#94):
+   each project an Application or ApplicationSet under the env dir names, and
+   safezone, which SafeZone-Deploy's Applications name. Each carries the sync
+   options Prune=false and Delete=false: the stage prunes and bootstrap-argocd
+   carries the resources finalizer, so without them removing the file, or
+   deleting bootstrap-argocd, deletes the project. The project default is
+   Argo CD's own and needs no definition.
 
     check.py <gitops-env-dir>      e.g. gitops/k3han
 
@@ -26,6 +34,11 @@ BOOTSTRAP = "00-bootstrap.yaml"
 SERVICE = "argocd"
 RESOURCES_FINALIZER = "resources-finalizer.argocd.argoproj.io"
 MANIFEST = (".yaml", ".yml", ".json")
+# Named by Applications outside Chorde (SafeZone-Deploy).
+EXTERNAL_PROJECTS = {"safezone"}
+BUILTIN_PROJECTS = {"default"}
+SYNC_OPTIONS = "argocd.argoproj.io/sync-options"
+REQUIRED_OPTIONS = ("Prune=false", "Delete=false")
 
 findings = []
 
@@ -78,11 +91,64 @@ def check_application(env_dir):
         find(f"manifests/{SERVICE}", f"holds no Application named {SERVICE}")
 
 
+def manifests(top):
+    """Yield (path, doc) for every manifest document under top, skipping the
+    git-ignored unsealed files."""
+    for root, dirs, files in os.walk(top):
+        dirs.sort()
+        for name in sorted(files):
+            if not name.endswith(MANIFEST) or name.startswith("unsealed-"):
+                continue
+            path = os.path.join(root, name)
+            for doc in load_all(path):
+                if isinstance(doc, dict):
+                    yield path, doc
+
+
+def named_projects(env_dir):
+    projects = set(EXTERNAL_PROJECTS)
+    for _, doc in manifests(env_dir):
+        spec = doc.get("spec") or {}
+        if doc.get("kind") == "Application":
+            project = spec.get("project")
+        elif doc.get("kind") == "ApplicationSet":
+            project = ((spec.get("template") or {}).get("spec") or {}).get("project")
+        else:
+            continue
+        if isinstance(project, str) and project:
+            projects.add(project)
+    return projects - BUILTIN_PROJECTS
+
+
+def check_appprojects(env_dir):
+    top = os.path.join(env_dir, "manifests", SERVICE)
+    defined = {}
+    for path, doc in manifests(top):
+        if doc.get("kind") != "AppProject":
+            continue
+        meta = doc.get("metadata") or {}
+        defined[meta.get("name")] = (path, meta)
+    for project in sorted(named_projects(env_dir)):
+        if project not in defined:
+            find(f"manifests/{SERVICE}",
+                 f"defines no AppProject named {project}; an Application names it")
+            continue
+        path, meta = defined[project]
+        raw = (meta.get("annotations") or {}).get(SYNC_OPTIONS) or ""
+        options = {o.strip() for o in str(raw).split(",")}
+        for option in REQUIRED_OPTIONS:
+            if option not in options:
+                find(os.path.relpath(path, env_dir),
+                     f"the AppProject {project} lacks the sync option {option}; "
+                     "the stage's prune or bootstrap-argocd's finalizer would delete it")
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     check_stage(sys.argv[1])
     check_application(sys.argv[1])
+    check_appprojects(sys.argv[1])
     for line in findings:
         print(line)
     sys.exit(1 if findings else 0)
