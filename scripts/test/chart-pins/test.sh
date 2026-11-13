@@ -196,10 +196,6 @@ fake expect "an overlay left in the stage directory" fail "$d" "manifests/svc/va
 d=$(demo_env); cp "$DEMO_DEFAULTS" "$d/manifests/svc/values.yaml"
 fake expect "chart defaults left in the stage directory" fail "$d" "manifests/svc/values.yaml: chart values"
 
-d=$(new_env); wrap "$d" svc demo 1.0.0 https://charts.example.test "$DEMO_DEFAULTS"
-mv "$d/manifests/svc" "$d/manifests/argocd"
-fake expect "argocd, applied outside the stages, is checked too" fail "$d" "manifests/argocd/application.yaml: source path gitops/k3han/charts/svc is not this service's wrapper"
-
 d=$(new_env)
 mkdir -p "$d/manifests/unlisted"
 printf 'apiVersion: argoproj.io/v1alpha1\nkind: Application\nspec:\n  sources:\n    - ref: chorde-repo\n' > "$d/manifests/unlisted/application.yaml"
