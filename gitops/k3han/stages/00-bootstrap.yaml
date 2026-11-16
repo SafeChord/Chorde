@@ -21,6 +21,11 @@ spec:
           # Wave 2: its SealedSecrets need the sealed-secrets CRD.
           - service: argocd
             wave: "2"
+          # zot, the nodes' pull-through registry (Chorde#102). Wave 2: its
+          # SealedSecrets need the sealed-secrets CRD. Until it serves, nodes
+          # pull from the upstreams.
+          - service: zot
+            wave: "2"
           # ingress-public + ingress-private both decommissioned (Chorde #4):
           # replaced by the NGF private+public paths below. argocd/grafana via the
           # private Gateway; echo via the public Gateway. nginx-ingress is gone.

@@ -1,0 +1,100 @@
+# Mirrors into zot the charts whose upstream publishes no OCI artifact at the
+# version a wrapper names (Chorde#102). The logic is scripts/ops/chart-mirror.sh,
+# which takes the chart versions from the wrappers' Chart.yaml on main: the job
+# clones the repository and runs it, so it can move to CI as it is.
+#
+# After a merge that moves one of those charts, zot lacks the new version
+# until the next run: up to an hour. A failed run fails the Job, which
+# kube-prometheus-stack's KubeJobFailed reports.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chart-mirror
+  namespace: zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: clone
+              image: alpine/git:2.54.1@sha256:2306e2b05ee0ef99f5d25b0779f645b24ae9f91ba187107503592fcdfe78da3a
+              args:
+                - clone
+                - --depth=1
+                - --branch=main
+                - https://github.com/SafeChord/Chorde.git
+                - /work/chorde
+              env:
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          containers:
+            - name: mirror
+              image: alpine/helm:3.22.1@sha256:8191701ad1f82ee3695c87211fcbfe6d7b1bb7df92ac1c8de9ccdb0995a6a2c1
+              command: ["sh", "/work/chorde/scripts/ops/chart-mirror.sh"]
+              args: ["/work/chorde/gitops/k3han", "zot.zot.svc.cluster.local:5000"]
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: REGISTRY_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: chart-mirror-credentials
+                      key: username
+                - name: REGISTRY_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: chart-mirror-credentials
+                      key: password
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}

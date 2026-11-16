@@ -1,0 +1,151 @@
+# zot's configuration (Chorde#102). zot watches this file and reloads access
+# control, sync and retention when it changes; whether it sees the kubelet's
+# update of a mounted ConfigMap has not been checked. A change to http or
+# storage always takes a restart: kubectl -n zot rollout restart deployment/zot.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zot-config
+  namespace: zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  config.yaml: |
+    distSpecVersion: 1.1.1
+
+    storage:
+      rootDirectory: /var/lib/registry
+      gc: true
+      gcDelay: 1h
+      gcInterval: 24h
+      # What is not needed is removed by these rules; GC then frees the blobs.
+      # A tag or an untagged image is kept if it was pulled in the last 90
+      # days, or is one of the two most recently pulled in its repository.
+      # Nodes pull the platform's images by digest (they are pinned
+      # tag@digest), and zot stores an image synced by digest untagged:
+      # without keepUntagged, deleteUntagged removes every running image
+      # a day after its pull. Check a change with a dry run first (dryRun:
+      # true logs each decision and deletes nothing).
+      retention:
+        dryRun: false
+        delay: 24h
+        policies:
+          - repositories: ["**"]
+            deleteReferrers: true
+            deleteUntagged: true
+            keepTags:
+              - patterns: [".*"]
+                pulledWithin: 2160h
+                mostRecentlyPulledCount: 2
+            keepUntagged:
+              pulledWithin: 2160h
+              mostRecentlyPulledCount: 2
+
+    http:
+      address: 0.0.0.0
+      port: "5000"
+      # Without docker2s2, an image published with Docker's schema 2 media
+      # types (docker.io's manifest lists) fails to sync; with it, zot keeps
+      # the upstream digest.
+      compat: ["docker2s2"]
+      # zot answers an on-demand pull only after the sync: a cold image or a
+      # tag re-checked against an upstream that does not answer can take
+      # longer than the 60s default, which drops the reply.
+      writeTimeout: 10m
+      # Anyone may read; only the chart mirror (cronjob.yaml) may write. With
+      # no auth, any pod could push over an upstream's tag and the nodes would
+      # pull it.
+      auth:
+        htpasswd:
+          path: /etc/zot/auth/htpasswd
+      accessControl:
+        repositories:
+          "**":
+            anonymousPolicy: ["read"]
+            policies:
+              - users: ["chart-mirror"]
+                actions: ["read", "create", "update"]
+        metrics:
+          anonymousPolicy: ["read"]
+
+    log:
+      level: info
+
+    extensions:
+      metrics:
+        enable: true
+        prometheus:
+          path: /metrics
+      # One entry per upstream host. A pull of <host>/<repo> through zot is
+      # synced from that host's entry (destination), on demand. Nodes reach
+      # zot through containerd's mirror (cluster/k3han/ansible/privision.yaml),
+      # which rewrites each host's repositories under its destination.
+      #
+      # manifestCheckInterval: how long a stored tag is served before zot asks
+      # the upstream again. A pull by digest never asks. A service whose tag
+      # must be re-checked gets its own entry, with interval 0 and a content
+      # prefix for its repository, placed before the host's default entry:
+      # entries are tried in order, and an entry records as checked only the
+      # tags it synced itself, so the default entry does not hold it back.
+      #
+      # maxRetries 1 and retryDelay 5s bound how long a pull waits on an
+      # upstream that does not answer: about 35s, after which the stored
+      # copy is served.
+      sync:
+        enable: true
+        registries:
+          - urls: ["https://registry-1.docker.io"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /docker.io
+          - urls: ["https://quay.io"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /quay.io
+          - urls: ["https://ghcr.io"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /ghcr.io
+          - urls: ["https://registry.k8s.io"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /registry.k8s.io
+          - urls: ["https://cr.fluentbit.io"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /cr.fluentbit.io
+          # argo-cd's chart names its redis image here.
+          - urls: ["https://ecr-public.aws.com"]
+            onDemand: true
+            tlsVerify: true
+            maxRetries: 1
+            retryDelay: 5s
+            manifestCheckInterval: 168h
+            content:
+              - prefix: "**"
+                destination: /ecr-public.aws.com
