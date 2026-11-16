@@ -26,6 +26,19 @@
       fs.inotify.max_user_instances: 8192
       fs.inotify.max_user_watches: 524288
 
+    # zot, the cluster's pull-through registry (Chorde#102): its Service's
+    # fixed address (gitops/k3han/manifests/zot/service.yaml), and the
+    # upstream hosts it mirrors (one sync entry each in its configmap.yaml).
+    # A host added here needs its entry there, and the reverse.
+    zot_endpoint: http://10.43.0.50:5000
+    zot_mirrored_hosts:
+      - docker.io
+      - quay.io
+      - ghcr.io
+      - registry.k8s.io
+      - cr.fluentbit.io
+      - ecr-public.aws.com
+
   # PRECONDITION: the node is already on the tailnet.
   #
   # This play connects over Tailscale -- every ansible_host in inventory.ini is
@@ -287,6 +300,64 @@
       when: node_tier == 'low' and '/swapfile' not in swap_active.stdout_lines
       tags: swap
 
+    # --- Image pulls through zot --------------------------------------------
+    # containerd pulls each mirrored host's images from zot first, its
+    # repositories rewritten under zot's destination for the host
+    # (docker.io/library/redis -> <zot>/docker.io/library/redis), and falls
+    # back to the host itself when zot does not serve the image: k3s keeps
+    # the default endpoint as the last one unless
+    # --disable-default-registry-endpoint is set, and this cluster does not
+    # set it. So zot being down slows a pull and does not fail it; zot's own
+    # image (ghcr.io) comes through the fallback. Chorde#102.
+    #
+    # By IP, not by Service name: at a node's start neither its resolver nor
+    # CoreDNS can be relied on. Plain HTTP: the address is a ClusterIP, reached
+    # from the host through kube-proxy's rules.
+    #
+    # k3s reads the file at start: a change restarts k3s or k3s-agent. Its
+    # units run with KillMode=process, so running containers are left alone.
+    - name: Create the k3s configuration directory
+      file:
+        path: /etc/rancher/k3s
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      tags: registry
+
+    - name: Pull mirrored registries through zot
+      copy:
+        dest: /etc/rancher/k3s/registries.yaml
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by Chorde cluster/k3han/ansible/privision.yaml (Chorde#102).
+          mirrors:
+          {% for host in zot_mirrored_hosts %}
+            {{ host }}:
+              endpoint:
+                - "{{ zot_endpoint }}"
+              rewrite:
+                "^(.*)$": "{{ host }}/$1"
+          {% endfor %}
+      notify: Restart k3s
+      tags: registry
+
+    # zot's storage, a local volume on the control plane
+    # (gitops/k3han/manifests/zot/storage.yaml). A local volume does not create
+    # its path, and the pod stays Pending without it. The kubelet gives the
+    # pod's group (fsGroup) access when it mounts it.
+    - name: Create zot's volume directory on the control plane
+      file:
+        path: /mnt/k3han-pv/zot
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: "'control-plane' in node_roles"
+      tags: registry
+
     # --- k3s agent -------------------------------------------------------------
     # The control plane is provisioned outside this play; its unit, flags
     # included, is recorded in cluster/k3han/k3s/ct-serv-jp/k3s.service.
@@ -397,6 +468,13 @@
           region={{ node_region }} tier={{ node_tier }} ha-level={{ node_ha_level }} provider={{ node_provider }} --overwrite
       ignore_errors: true
       tags: label
+
+  handlers:
+    # The control plane runs the k3s server unit, every other node k3s-agent.
+    - name: Restart k3s
+      systemd:
+        name: "{{ 'k3s' if 'control-plane' in node_roles else 'k3s-agent' }}"
+        state: restarted
 
   # Reminder: This playbook is a formal documentation artifact.
   # It is designed to be scalable for multiple agents.
