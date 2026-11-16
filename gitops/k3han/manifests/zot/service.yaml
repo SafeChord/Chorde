@@ -1,0 +1,23 @@
+# zot's address. Nodes name it by IP in /etc/rancher/k3s/registries.yaml
+# (cluster/k3han/ansible/privision.yaml): at a node's start neither its
+# resolver nor CoreDNS can be relied on to resolve a Service name. The address
+# sits in the lower band of the service CIDR (10.43.0.0/16), which Kubernetes
+# leaves to fixed addresses; moving it means changing both files.
+apiVersion: v1
+kind: Service
+metadata:
+  name: zot
+  namespace: zot
+  labels:
+    app.kubernetes.io/name: zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  type: ClusterIP
+  clusterIP: 10.43.0.50
+  selector:
+    app.kubernetes.io/name: zot
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

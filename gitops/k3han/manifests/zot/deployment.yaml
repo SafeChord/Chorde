@@ -1,0 +1,100 @@
+# zot, K3han's pull-through registry (Chorde#102). One pod: its storage is a
+# local volume on the control plane, and its metadata a BoltDB file that one
+# process holds, so a rollout stops the old pod before starting the new one.
+#
+# Its own image comes from ghcr.io. Nodes pull ghcr.io through zot as well,
+# so while zot is down the pull falls back to ghcr.io (the containerd mirror
+# keeps the upstream as its last endpoint).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot
+  namespace: zot
+  labels:
+    app.kubernetes.io/name: zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zot
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zot
+    spec:
+      # The volume's node affinity places the pod on the control plane.
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: zot
+          image: ghcr.io/project-zot/zot:v2.1.23@sha256:9d3de83ac2099e6f4843045b4c9b65b7e8baf40f92d28f54906dee9d4d390fd7
+          args: ["serve", "/etc/zot/config/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 5000
+          startupProbe:
+            httpGet:
+              path: /startupz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # A directory, not a subPath: a change to the ConfigMap reaches
+            # the file, and zot reloads it.
+            - name: config
+              mountPath: /etc/zot/config
+              readOnly: true
+            - name: auth
+              mountPath: /etc/zot/auth
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/registry
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: zot-config
+        - name: auth
+          secret:
+            secretName: zot-htpasswd
+        - name: data
+          persistentVolumeClaim:
+            claimName: zot-data
+        - name: tmp
+          emptyDir: {}

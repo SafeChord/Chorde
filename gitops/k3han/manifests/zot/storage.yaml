@@ -1,0 +1,44 @@
+# zot's storage: a static local volume on the control plane, as Prometheus's
+# (Chorde#102). The directory is created by cluster/k3han/ansible/privision.yaml;
+# a local volume does not create its path. Retain: deleting the claim keeps
+# the cache on disk.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: contabo-local-30g-zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  capacity:
+    storage: 30Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  claimRef:
+    namespace: zot
+    name: zot-data
+  local:
+    path: /mnt/k3han-pv/zot
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zot-data
+  namespace: zot
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  storageClassName: local-path
+  volumeName: contabo-local-30g-zot
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
