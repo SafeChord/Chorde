@@ -1,0 +1,60 @@
+# An alert when zot cannot serve (Chorde#102). A node that cannot pull
+# through zot falls back to the upstream without a sign, so without this zot
+# could stay down until an upstream fails as well.
+#
+# ZotDown fires both when the target is down and when it is gone: with no
+# ready pod, the Service has no endpoint, Prometheus has no target, and
+# TargetDown, which counts failing targets, never fires.
+#
+# Not seen by either: zot up, but a node unable to reach it (a wrong
+# registries.yaml, a broken route). That node pulls from the upstream.
+#
+# The CRDs come with kube-prometheus-stack, a later stage: on a cold start
+# these two wait for it, and the rest of zot does not.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: zot
+  namespace: zot
+  labels:
+    release: kube-prometheus-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zot
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: zot
+  namespace: zot
+  labels:
+    release: kube-prometheus-stack
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  groups:
+    - name: zot
+      rules:
+        - alert: ZotDown
+          expr: absent(up{job="zot", namespace="zot"} == 1)
+          for: 5m
+          # absent() over a comparison carries no labels; Alertmanager
+          # groups by namespace.
+          labels:
+            severity: critical
+            namespace: zot
+          annotations:
+            summary: zot cannot serve pulls
+            description: >-
+              No zot target has answered a scrape for 5 minutes. K3han's nodes
+              are pulling images straight from the upstream registries, and an
+              image whose upstream is down will not start.
