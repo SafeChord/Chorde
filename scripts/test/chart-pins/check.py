@@ -20,8 +20,13 @@ Docs safechord.chorde.md section 4, item 1:
    manifests are those under manifests/ and kustomize/, where a service a
    kustomization renders keeps its source (Chorde#54).
 4. Every image a wrapper renders carries a digest, and a pin's tag is the one
-   the chart's version renders by default (Chorde#53). Checked with
-   --rendered, which renders every wrapper.
+   the chart's version renders by default (Chorde#53), unless the wrapper's
+   Chart.yaml declares it ahead in the annotation chorde.io/pins-ahead, one
+   line per image, `<chart version> <image>:<tag> <ticket>`, the image as the
+   overlay renders it without its digest. A declaration holds only at the
+   dependency's version; one at another version, or naming no image the
+   wrapper renders ahead, is a finding (Chorde#103). Checked with --rendered,
+   which renders every wrapper.
 
     check.py <gitops-env-dir>      e.g. gitops/k3han; rules 1 to 3
     check.py --rendered <gitops-env-dir>
@@ -540,11 +545,45 @@ def check_rendered(env_dir):
         for where, ref in sorted(renders["pinned"].items()):
             if not DIGEST.search(ref):
                 find(rel, f"{where} renders {ref} without a digest")
+        ahead, used = declared_ahead(top, f"{rel}/Chart.yaml", str(dep.get("version"))), set()
         for where, ref in sorted(renders["tags"].items()):
             default = renders["defaults"].get(where)
-            if default is not None and default != ref:
-                find(rel, f"{where} renders {renders['pinned'].get(where, ref)} from its pin; "
-                          f"{dep.get('name')} {dep.get('version')} renders {default} there by default")
+            if default is None or default == ref:
+                continue
+            if ref in ahead:
+                used.add(ref)
+                continue
+            find(rel, f"{where} renders {renders['pinned'].get(where, ref)} from its pin; "
+                      f"{dep.get('name')} {dep.get('version')} renders {default} there by default")
+        for ref in sorted(set(ahead) - used):
+            find(f"{rel}/Chart.yaml", f"{AHEAD_KEY} declares {ref} ahead ({ahead[ref]}), which "
+                                      f"{dep.get('name')} {dep.get('version')} does not render from a pin "
+                                      f"ahead of its default")
+
+
+# A chart-picked pin ahead of its chart's default, declared in the wrapper's
+# Chart.yaml (Docs safechord.chorde.md section 4, item 1; Chorde#103).
+AHEAD_KEY = "chorde.io/pins-ahead"
+AHEAD_LINE = re.compile(r"^(\S+) (\S+:[^\s@]+) (\S+#\d+)$")
+
+
+def declared_ahead(top, where, version):
+    """{image: ticket} the wrapper declares ahead at the dependency's version."""
+    chart = (load_all(os.path.join(top, "Chart.yaml")) or [{}])[0]
+    text = str((chart.get("annotations") or {}).get(AHEAD_KEY) or "")
+    ahead = {}
+    for line in (x.strip() for x in text.splitlines()):
+        if not line:
+            continue
+        m = AHEAD_LINE.match(line)
+        if not m:
+            find(where, f"{AHEAD_KEY} line `{line}` is not `<chart version> <image>:<tag> <ticket>`")
+        elif m.group(1) != version:
+            find(where, f"{AHEAD_KEY} declares {m.group(2)} ahead at chart version {m.group(1)}; "
+                        f"the dependency is at {version}")
+        else:
+            ahead[m.group(2)] = m.group(3)
+    return ahead
 
 
 def rendered_pins(env_dir):
