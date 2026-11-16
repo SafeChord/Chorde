@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Requirement tests for chart applications, chart defaults and image pins
-# (Chorde#45, Chorde#77, Chorde#69).
+# (Chorde#45, Chorde#77, Chorde#69, Chorde#103).
 #
 # Runs check.py against gitops/k3han, then against small trees built in a temp
 # directory, each breaking or keeping the rule one way, so the check is shown
@@ -582,6 +582,73 @@ $HELPER
     image:
       tag: 0.9.0@$DIGEST
 $JOB")" "NginxProxy/fixture spec.kubernetes.deployment.container.image renders reg.example/proxy:0.9.0@$DIGEST from its pin"
+
+echo "== pins declared ahead of their chart (Chorde#103)"
+# A chart-picked pin may run ahead of its chart's default only where the
+# wrapper's Chart.yaml declares it in the annotation chorde.io/pins-ahead, one
+# line per image, `<chart version> <image>:<tag> <ticket>`, the image as the
+# overlay renders it without its digest. A declaration holds only at the chart
+# version it names, and one that names no image the wrapper renders ahead is a
+# finding, so it cannot outlive the pin it was for.
+
+# ahead_env <declaration lines> <overlay under `fixture:`>: fixture_env, its
+# wrapper's Chart.yaml declaring the lines.
+ahead_env() {
+  local dir; dir=$(fixture_env "$2")
+  { echo "annotations:"; echo "  chorde.io/pins-ahead: |"; sed 's/^/    /' <<<"$1"; } >> "$dir/charts/svc/Chart.yaml"
+  echo "$dir"
+}
+APP_AHEAD="  image:
+    tag: 1.0.1@$DIGEST"
+HELPER_AHEAD="  helper:
+    image:
+      tag: 2.1.0@$DIGEST"
+
+expect_rendered "a pin ahead of its chart, declared at the chart's version" pass "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.1 Chorde#103" "$APP_AHEAD
+$HELPER
+$PROXY
+$JOB")"
+expect_rendered "two pins ahead, each declared on its own line" pass "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.1 Chorde#103
+1.0.0 reg.example/helper:2.1.0 Chorde#103" "$APP_AHEAD
+$HELPER_AHEAD
+$PROXY
+$JOB")"
+expect_rendered "a declaration at another chart version" fail "$(ahead_env \
+  "0.9.0 reg.example/app:1.0.1 Chorde#103" "$APP_AHEAD
+$HELPER
+$PROXY
+$JOB")" "renders reg.example/app:1.0.1@$DIGEST from its pin; fixture 1.0.0 renders reg.example/app:1.0.0 there by default"
+grep -F "charts/svc/Chart.yaml" <<<"$LAST_OUT" | grep -qF "0.9.0" \
+  && ok "  ... and the declaration is named with its chart version" \
+  || fail "  ... and the declaration is named with its chart version" "$LAST_OUT"
+expect_rendered "a declaration whose pin is back at the chart's default" fail "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.1 Chorde#103" "$APP
+$HELPER
+$PROXY
+$JOB")" "charts/svc/Chart.yaml"
+grep -F "charts/svc/Chart.yaml" <<<"$LAST_OUT" | grep -qF "reg.example/app:1.0.1" \
+  && ok "  ... naming the image it declares" || fail "  ... naming the image it declares" "$LAST_OUT"
+expect_rendered "a declaration at another tag than the pin's" fail "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.2 Chorde#103" "$APP_AHEAD
+$HELPER
+$PROXY
+$JOB")" "renders reg.example/app:1.0.1@$DIGEST from its pin"
+grep -F "charts/svc/Chart.yaml" <<<"$LAST_OUT" | grep -qF "reg.example/app:1.0.2" \
+  && ok "  ... and the declaration that names no pin" || fail "  ... and the declaration that names no pin" "$LAST_OUT"
+expect_rendered "a declaration covers only the image it names" fail "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.1 Chorde#103" "$APP_AHEAD
+$HELPER_AHEAD
+$PROXY
+$JOB")" "renders reg.example/helper:2.1.0@$DIGEST from its pin; fixture 1.0.0 renders reg.example/helper:2.0.0 there by default"
+grep -qF "reg.example/app:1.0.1@$DIGEST from its pin" <<<"$LAST_OUT" \
+  && fail "  ... and the declared one passes" "$LAST_OUT" || ok "  ... and the declared one passes"
+expect_rendered "a declaration line without its ticket" fail "$(ahead_env \
+  "1.0.0 reg.example/app:1.0.1" "$APP_AHEAD
+$HELPER
+$PROXY
+$JOB")" "charts/svc/Chart.yaml"
 
 d=$(fixture_env "$APP
 $HELPER
