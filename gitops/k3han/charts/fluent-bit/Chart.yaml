@@ -7,3 +7,8 @@ dependencies:
   - name: fluent-bit
     version: 0.58.3
     repository: https://fluent.github.io/helm-charts
+annotations:
+  # Pins ahead of the dependency's defaults, one per line (Docs
+  # safechord.chorde.md section 4, item 1): settle them when the version moves.
+  chorde.io/pins-ahead: |
+    0.58.3 cr.fluentbit.io/fluent/fluent-bit:5.2.0 Chorde#103
