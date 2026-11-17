@@ -5,5 +5,8 @@ name: alloy
 version: 0.0.0
 dependencies:
   - name: alloy
+    # zot's chart mirror (scripts/ops/chart-mirror.sh, Chorde#102) copies this
+    # version into zot: grafana publishes alloy as OCI only from 1.16.0. When
+    # this moves to 1.16.0 or later, drop alloy from MIRROR_CHARTS there.
     version: 1.15.0
     repository: https://grafana.github.io/helm-charts
